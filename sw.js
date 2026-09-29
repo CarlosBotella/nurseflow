@@ -2,7 +2,7 @@
  * NurseFlow service worker.
  * Increment CACHE_VERSION for every deployment that changes application files.
  */
-const CACHE_VERSION = 'nurseflow-v2.0.0';
+const CACHE_VERSION = 'nurseflow-v2.0.1';
 const APP_SHELL = [
   './',
   './index.html',

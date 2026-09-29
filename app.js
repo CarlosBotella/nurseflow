@@ -215,7 +215,309 @@ async function openPracticumSettings(){
   modal(`<div class="modal-head"><h2>Configurar prácticas</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="pracForm"><label class="switch-row"><span><strong>Tengo prácticas asignadas</strong><span class="sub">Puedes desactivarlo al terminar el periodo.</span></span><span class="switch"><input id="hasPracticumSwitch" type="checkbox" ${state.settings.hasPracticum?'checked':''}><span class="slider"></span></span></label><div id="pracFields" class="${state.settings.hasPracticum?'':'hidden'}"><label>Prácticum</label><input class="field" name="practicum" value="${esc(state.settings.practicum)}" placeholder="Ej. Prácticum II"><label>Centro</label><input class="field" name="hospital" value="${esc(state.settings.hospital)}" placeholder="Hospital, centro de salud…"><label>Servicio / unidad</label><input class="field" name="service" value="${esc(state.settings.service)}" placeholder="Opcional"><div class="form-row"><div><label>Inicio</label><input class="field" type="date" name="start" value="${state.settings.periodStart||''}"></div><div><label>Fin</label><input class="field" type="date" name="end" value="${state.settings.periodEnd||''}"></div></div><label>Horario habitual</label><input class="field" name="shift" value="${esc(state.settings.shift)}" placeholder="Ej. 15:00–22:00"></div><div class="modal-actions"><button class="btn primary">Guardar</button></div></form>`); $('#hasPracticumSwitch').onchange=e=>$('#pracFields').classList.toggle('hidden',!e.target.checked); $('#pracForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),has=$('#hasPracticumSwitch').checked;Object.assign(state.settings,{hasPracticum:has,practicum:has?f.get('practicum').trim():'',hospital:has?f.get('hospital').trim():'',service:has?f.get('service').trim():'',periodStart:has?f.get('start'):'',periodEnd:has?f.get('end'):'',shift:has?f.get('shift').trim():''});await saveSettings();closeModal();render();toast('Prácticas actualizadas')};
 }
 async function openDayLog(){if(!state.settings.hasPracticum)return openPracticumSettings();const date=isoToday();const row=await NurseDB.get('days',date);modal(`<div class="modal-head"><h2>Registrar día</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="dayForm"><label>Fecha</label><input class="field" type="date" name="date" value="${date}" required><label class="check-row"><input type="checkbox" name="attendance" ${row?.attendanceOfficial?'checked':''}><span>He registrado la asistencia oficial en ${state.settings.university==='UCV'?'UCVEvalúa':'la plataforma de mi universidad'}</span></label><label>Aprendizaje general del día</label><textarea class="field" name="learning" placeholder="Qué has aprendido, dudas, aspectos a revisar…">${esc(row?.learning||'')}</textarea><label>Estado del día</label><select class="field" name="mood"><option ${row?.mood==='Tranquilo'?'selected':''}>Tranquilo</option><option ${row?.mood==='Intenso'?'selected':''}>Intenso</option><option ${row?.mood==='Difícil'?'selected':''}>Difícil</option><option ${row?.mood==='Muy productivo'?'selected':''}>Muy productivo</option></select><div class="modal-actions"><button type="button" class="btn" id="addCaseFromDay">Añadir caso</button><button class="btn primary">Guardar día</button></div></form>`);$('#dayForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await NurseDB.put('days',{id:f.get('date'),date:f.get('date'),attendanceOfficial:f.get('attendance')==='on',learning:f.get('learning').trim(),mood:f.get('mood')});closeModal();render();toast('Día guardado')};$('#addCaseFromDay').onclick=()=>{closeModal();openCaseForm(date)}}
-async function openCaseForm(date=isoToday(),id=null){if(!state.settings.hasPracticum)return openPracticumSettings();const row=id?await NurseDB.get('cases',id):null;const procedures=await NurseDB.all('procedures');modal(`<div class="modal-head"><h2>${row?'Editar':'Nuevo'} caso de aprendizaje</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="caseForm"><div class="notice info">No introduzcas nombre, iniciales, SIP, historia clínica, habitación, fecha de nacimiento, fotos ni otros datos identificativos del paciente.</div><div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="date" value="${row?.date||date}" required></div><div><label>Área</label><input class="field" name="area" value="${esc(row?.area||state.settings.service)}" placeholder="Ej. Medicina interna"></div></div><label>Patología / diagnóstico</label><div class="form-row"><input class="field" name="diagnosis" id="caseDiagnosis" value="${esc(row?.diagnosis||'')}" required><button type="button" class="btn" id="icdLookup">Buscar CIE-11</button></div><input type="hidden" name="icdCode" value="${esc(row?.icdCode||'')}"><div id="icdSelected" class="small muted">${row?.icdCode?`CIE-11: ${esc(row.icdCode)}`:''}</div><label>Contexto clínico anonimizado</label><textarea class="field" name="context" placeholder="Solo lo necesario para aprender, sin identificadores.">${esc(row?.context||'')}</textarea><label>Procedimientos asociados</label><div id="caseProcedures">${(row?.procedures||[]).map((p,i)=>procedureEditor(p,i,procedures)).join('')}</div><button type="button" class="btn secondary" id="addProcedure">＋ Añadir procedimiento</button><label>Medicamentos relacionados (opcional)</label><input class="field" name="meds" value="${esc((row?.meds||[]).join(', '))}" placeholder="Ej. furosemida, paracetamol"><label>¿Qué he aprendido?</label><textarea class="field" name="learning">${esc(row?.learning||'')}</textarea><label>¿Qué quiero revisar?</label><textarea class="field" name="review">${esc(row?.review||'')}</textarea><label class="check-row"><input type="checkbox" name="starred" ${row?.starred?'checked':''}><span>Marcar como relevante para la memoria</span></label><div class="modal-actions">${row?'<button type="button" class="btn danger" id="deleteCase">Eliminar</button>':''}<button class="btn primary">Guardar caso</button></div></form>`);let n=(row?.procedures||[]).length;$('#addProcedure').onclick=()=>{$('#caseProcedures').insertAdjacentHTML('beforeend',procedureEditor(null,n++,procedures))};$('#icdLookup').onclick=()=>openICDLookup($('#caseDiagnosis').value,sel=>{document.querySelector('[name="diagnosis"]').value=sel.title;document.querySelector('[name="icdCode"]').value=sel.code||'';$('#icdSelected').textContent=sel.code?`CIE-11: ${sel.code}`:''});$('#caseForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const ps=[...e.target.querySelectorAll('[data-proc-row]')].map(r=>({id:r.querySelector('[name="procId"]').value,name:r.querySelector('[name="procId"] option:checked')?.textContent||'',participation:r.querySelector('[name="participation"]').value})).filter(x=>x.id);await NurseDB.put('cases',{id:row?.id||uid(),date:f.get('date'),area:f.get('area').trim(),diagnosis:f.get('diagnosis').trim(),icdCode:f.get('icdCode').trim(),context:f.get('context').trim(),procedures:ps,meds:f.get('meds').split(',').map(x=>x.trim()).filter(Boolean),learning:f.get('learning').trim(),review:f.get('review').trim(),starred:f.get('starred')==='on',updatedAt:new Date().toISOString()});closeModal();render();toast('Caso guardado')};if(row)$('#deleteCase').onclick=async()=>{if(confirm('¿Eliminar este caso?')){await NurseDB.remove('cases',row.id);closeModal();render();toast('Caso eliminado')}}}
+/**
+ * Attaches live ICD-11 autocomplete to the diagnosis field used by the
+ * practicum case form. Searches are debounced to avoid unnecessary calls to
+ * the WHO API and stale responses are ignored when the user keeps typing.
+ *
+ * The selected WHO result is written to both the visible diagnosis field and
+ * the hidden ICD-11 code field. If the user edits the diagnosis afterwards,
+ * the previously selected code is cleared so that text and code cannot drift
+ * out of sync.
+ */
+function attachICDAutocomplete({ input, codeInput, selectedLabel, resultsBox }) {
+  if (!input || !codeInput || !selectedLabel || !resultsBox) return;
+
+  let timer = null;
+  let requestSequence = 0;
+  let activeIndex = -1;
+  let visibleResults = [];
+
+  const hideResults = () => {
+    resultsBox.innerHTML = '';
+    resultsBox.style.display = 'none';
+    activeIndex = -1;
+    visibleResults = [];
+  };
+
+  const renderResults = (items) => {
+    visibleResults = items;
+    activeIndex = -1;
+
+    if (!items.length) {
+      resultsBox.innerHTML = '<div class="list-row"><div class="grow"><span class="sub">Sin resultados en CIE-11</span></div></div>';
+      resultsBox.style.display = 'block';
+      return;
+    }
+
+    resultsBox.innerHTML = items.map((item, index) => `
+      <button type="button" class="list-row clickable" data-icd-suggestion="${index}">
+        <span class="pill">${esc(item.code || 'CIE')}</span>
+        <div class="grow">
+          <strong>${esc(item.title)}</strong>
+        </div>
+        <span class="chev">›</span>
+      </button>
+    `).join('');
+    resultsBox.style.display = 'block';
+
+    resultsBox.querySelectorAll('[data-icd-suggestion]').forEach(button => {
+      button.addEventListener('mousedown', event => event.preventDefault());
+      button.addEventListener('click', () => selectResult(Number(button.dataset.icdSuggestion)));
+    });
+  };
+
+  const selectResult = (index) => {
+    const item = visibleResults[index];
+    if (!item) return;
+
+    input.value = item.title;
+    codeInput.value = item.code || '';
+    selectedLabel.textContent = item.code ? `CIE-11: ${item.code}` : 'Diagnóstico CIE-11 seleccionado';
+    selectedLabel.classList.remove('muted');
+    hideResults();
+    input.focus();
+  };
+
+  const highlightResult = () => {
+    const buttons = [...resultsBox.querySelectorAll('[data-icd-suggestion]')];
+    buttons.forEach((button, index) => {
+      button.setAttribute('aria-selected', index === activeIndex ? 'true' : 'false');
+      button.style.outline = index === activeIndex ? '2px solid var(--accent, currentColor)' : '';
+      if (index === activeIndex) button.scrollIntoView({ block: 'nearest' });
+    });
+  };
+
+  const search = async () => {
+    const query = input.value.trim();
+    if (query.length < 3) {
+      hideResults();
+      return;
+    }
+
+    if (!state.settings.icdWorker) {
+      resultsBox.innerHTML = '<div class="notice">Configura primero la URL del Worker en Ajustes → APIs y fuentes.</div>';
+      resultsBox.style.display = 'block';
+      return;
+    }
+
+    const currentRequest = ++requestSequence;
+    resultsBox.innerHTML = '<div class="list-row"><div class="grow"><span class="sub">Buscando en CIE-11…</span></div></div>';
+    resultsBox.style.display = 'block';
+
+    try {
+      const response = await fetch(
+        `${state.settings.icdWorker.replace(/\/$/, '')}/icd/search?q=${encodeURIComponent(query)}`
+      );
+      if (!response.ok) throw new Error(`ICD search failed with ${response.status}`);
+
+      const payload = await response.json();
+      if (currentRequest !== requestSequence) return;
+
+      const raw = Array.isArray(payload)
+        ? payload
+        : (payload.destinationEntities || payload.results || []);
+
+      const items = raw
+        .map(item => ({
+          code: item.theCode || item.code || '',
+          title: String(item.title || item.bestMatchText || '')
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
+            .trim()
+        }))
+        .filter(item => item.title)
+        .slice(0, 8);
+
+      renderResults(items);
+    } catch (error) {
+      if (currentRequest !== requestSequence) return;
+      resultsBox.innerHTML = '<div class="notice">No se pudo consultar CIE-11. Comprueba el Worker y la conexión.</div>';
+      resultsBox.style.display = 'block';
+    }
+  };
+
+  input.addEventListener('input', () => {
+    // Free text entered after selecting an ICD entity invalidates the stored code.
+    codeInput.value = '';
+    selectedLabel.textContent = '';
+    selectedLabel.classList.add('muted');
+
+    clearTimeout(timer);
+    const query = input.value.trim();
+    if (query.length < 3) {
+      hideResults();
+      return;
+    }
+    timer = setTimeout(search, 350);
+  });
+
+  input.addEventListener('focus', () => {
+    if (input.value.trim().length >= 3 && !resultsBox.innerHTML) {
+      clearTimeout(timer);
+      timer = setTimeout(search, 150);
+    }
+  });
+
+  input.addEventListener('keydown', event => {
+    if (resultsBox.style.display === 'none' || !visibleResults.length) return;
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      activeIndex = (activeIndex + 1) % visibleResults.length;
+      highlightResult();
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      activeIndex = activeIndex <= 0 ? visibleResults.length - 1 : activeIndex - 1;
+      highlightResult();
+    } else if (event.key === 'Enter' && activeIndex >= 0) {
+      event.preventDefault();
+      selectResult(activeIndex);
+    } else if (event.key === 'Escape') {
+      hideResults();
+    }
+  });
+
+  input.addEventListener('blur', () => {
+    // Allow a suggestion click to complete before closing the list.
+    setTimeout(hideResults, 180);
+  });
+}
+
+/**
+ * Creates or edits an anonymised practicum learning case.
+ * ICD-11 suggestions appear automatically while the user types the diagnosis.
+ */
+async function openCaseForm(date = isoToday(), id = null) {
+  if (!state.settings.hasPracticum) return openPracticumSettings();
+
+  const row = id ? await NurseDB.get('cases', id) : null;
+  const procedures = await NurseDB.all('procedures');
+
+  modal(`
+    <div class="modal-head">
+      <h2>${row ? 'Editar' : 'Nuevo'} caso de aprendizaje</h2>
+      <button class="icon-btn" onclick="closeModal()">×</button>
+    </div>
+    <form id="caseForm">
+      <div class="notice info">
+        No introduzcas nombre, iniciales, SIP, historia clínica, habitación, fecha de nacimiento,
+        fotos ni otros datos identificativos del paciente.
+      </div>
+
+      <div class="form-row">
+        <div>
+          <label>Fecha</label>
+          <input class="field" type="date" name="date" value="${row?.date || date}" required>
+        </div>
+        <div>
+          <label>Área</label>
+          <input class="field" name="area" value="${esc(row?.area || state.settings.service)}" placeholder="Ej. Medicina interna">
+        </div>
+      </div>
+
+      <label for="caseDiagnosis">Patología / diagnóstico</label>
+      <input
+        class="field"
+        name="diagnosis"
+        id="caseDiagnosis"
+        value="${esc(row?.diagnosis || '')}"
+        placeholder="Empieza a escribir, por ejemplo: neumonía"
+        autocomplete="off"
+        aria-autocomplete="list"
+        aria-controls="icdAutocomplete"
+        required
+      >
+      <input type="hidden" name="icdCode" id="caseIcdCode" value="${esc(row?.icdCode || '')}">
+      <div id="icdAutocomplete" class="list" role="listbox" style="display:none; margin-top:6px;"></div>
+      <div id="icdSelected" class="small ${row?.icdCode ? '' : 'muted'}" style="margin-top:5px;">
+        ${row?.icdCode ? `CIE-11: ${esc(row.icdCode)}` : 'Escribe al menos 3 caracteres para buscar automáticamente en CIE-11.'}
+      </div>
+
+      <label>Contexto clínico anonimizado</label>
+      <textarea class="field" name="context" placeholder="Solo lo necesario para aprender, sin identificadores.">${esc(row?.context || '')}</textarea>
+
+      <label>Procedimientos asociados</label>
+      <div id="caseProcedures">
+        ${(row?.procedures || []).map((p, i) => procedureEditor(p, i, procedures)).join('')}
+      </div>
+      <button type="button" class="btn secondary" id="addProcedure">＋ Añadir procedimiento</button>
+
+      <label>Medicamentos relacionados (opcional)</label>
+      <input class="field" name="meds" value="${esc((row?.meds || []).join(', '))}" placeholder="Ej. furosemida, paracetamol">
+
+      <label>¿Qué he aprendido?</label>
+      <textarea class="field" name="learning">${esc(row?.learning || '')}</textarea>
+
+      <label>¿Qué quiero revisar?</label>
+      <textarea class="field" name="review">${esc(row?.review || '')}</textarea>
+
+      <label class="check-row">
+        <input type="checkbox" name="starred" ${row?.starred ? 'checked' : ''}>
+        <span>Marcar como relevante para la memoria</span>
+      </label>
+
+      <div class="modal-actions">
+        ${row ? '<button type="button" class="btn danger" id="deleteCase">Eliminar</button>' : ''}
+        <button class="btn primary">Guardar caso</button>
+      </div>
+    </form>
+  `);
+
+  let n = (row?.procedures || []).length;
+  $('#addProcedure').onclick = () => {
+    $('#caseProcedures').insertAdjacentHTML('beforeend', procedureEditor(null, n++, procedures));
+  };
+
+  attachICDAutocomplete({
+    input: $('#caseDiagnosis'),
+    codeInput: $('#caseIcdCode'),
+    selectedLabel: $('#icdSelected'),
+    resultsBox: $('#icdAutocomplete')
+  });
+
+  $('#caseForm').onsubmit = async event => {
+    event.preventDefault();
+    const form = new FormData(event.target);
+    const procedureRows = [...event.target.querySelectorAll('[data-proc-row]')]
+      .map(element => ({
+        id: element.querySelector('[name="procId"]').value,
+        name: element.querySelector('[name="procId"] option:checked')?.textContent || '',
+        participation: element.querySelector('[name="participation"]').value
+      }))
+      .filter(item => item.id);
+
+    await NurseDB.put('cases', {
+      id: row?.id || uid(),
+      date: form.get('date'),
+      area: form.get('area').trim(),
+      diagnosis: form.get('diagnosis').trim(),
+      icdCode: form.get('icdCode').trim(),
+      context: form.get('context').trim(),
+      procedures: procedureRows,
+      meds: form.get('meds').split(',').map(item => item.trim()).filter(Boolean),
+      learning: form.get('learning').trim(),
+      review: form.get('review').trim(),
+      starred: form.get('starred') === 'on',
+      updatedAt: new Date().toISOString()
+    });
+
+    closeModal();
+    render();
+    toast('Caso guardado');
+  };
+
+  if (row) {
+    $('#deleteCase').onclick = async () => {
+      if (confirm('¿Eliminar este caso?')) {
+        await NurseDB.remove('cases', row.id);
+        closeModal();
+        render();
+        toast('Caso eliminado');
+      }
+    };
+  }
+}
 function procedureEditor(p,i,procedures){return `<div class="form-row" data-proc-row style="margin-bottom:8px"><select class="field" name="procId"><option value="">Selecciona técnica</option>${procedures.map(x=>`<option value="${x.id}" ${p?.id===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select><select class="field" name="participation"><option ${p?.participation==='Observado'?'selected':''}>Observado</option><option ${p?.participation==='Ayudado'?'selected':''}>Ayudado</option><option ${p?.participation==='Realizado con supervisión'?'selected':''}>Realizado con supervisión</option><option ${p?.participation==='Realizado por mí'?'selected':''}>Realizado por mí</option><option ${p?.participation==='Realizado por otro profesional'?'selected':''}>Realizado por otro profesional</option></select></div>`}
 async function openCaseDiary(){const rows=(await NurseDB.all('cases')).sort((a,b)=>b.date.localeCompare(a.date));modal(`<div class="modal-head"><h2>Diario de casos</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="list">${rows.map(caseRow).join('')||noData('Sin casos')}</div><div class="modal-actions"><button class="btn primary" id="newCaseDiary">Nuevo caso</button></div>`);$$('[data-case]').forEach(b=>b.onclick=()=>{closeModal();openCaseDetail(b.dataset.case)});$('#newCaseDiary').onclick=()=>{closeModal();openCaseForm()}}
 async function openCaseDetail(id){const c=await NurseDB.get('cases',id);if(!c)return;modal(`<div class="modal-head"><h2>${esc(c.diagnosis)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p class="small muted">${dateFmt(c.date)}${c.area?' · '+esc(c.area):''}${c.icdCode?' · CIE-11 '+esc(c.icdCode):''}</p>${c.context?`<h3>Contexto</h3><p>${esc(c.context)}</p>`:''}<h3>Procedimientos</h3><div class="list">${(c.procedures||[]).map(p=>`<div class="list-row"><div class="grow"><strong>${esc(p.name)}</strong><div class="sub">${esc(p.participation)}</div></div></div>`).join('')||noData('Ninguno')}</div>${c.meds?.length?`<h3>Medicamentos relacionados</h3><div class="tag-cloud">${c.meds.map(m=>`<span class="tag">${esc(m)}</span>`).join('')}</div>`:''}${c.learning?`<h3>Aprendizaje</h3><p>${esc(c.learning)}</p>`:''}${c.review?`<h3>Para revisar</h3><p>${esc(c.review)}</p>`:''}<div class="modal-actions"><button class="btn" id="editCase">Editar</button></div>`);$('#editCase').onclick=()=>{closeModal();openCaseForm(c.date,c.id)}}
