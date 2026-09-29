@@ -47,7 +47,30 @@ function bindBase(){
 function go(route){state.route=route;syncNav();render();window.scrollTo({top:0,behavior:'instant'})}
 function applyTheme(){let t=state.settings.theme;if(t==='system')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}
 async function saveSettings(){await NurseDB.put('settings',{id:'main',value:state.settings});applyTheme()}
-function registerSW(){if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})}
+function registerSW(){
+  if(!('serviceWorker' in navigator)) return;
+
+  let reloading = false;
+
+  navigator.serviceWorker.addEventListener('controllerchange',()=>{
+    if(reloading) return;
+    reloading = true;
+    window.location.reload();
+  });
+
+  navigator.serviceWorker
+    .register('./sw.js',{updateViaCache:'none'})
+    .then(async registration=>{
+      try{
+        await registration.update();
+      }catch(error){
+        console.warn('No se pudo comprobar una actualización del Service Worker:',error);
+      }
+    })
+    .catch(error=>{
+      console.warn('No se pudo registrar el Service Worker:',error);
+    });
+}
 function setupInstall(){let prompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();prompt=e;$('#installBanner').classList.remove('hidden')});$('#installBtn').onclick=async()=>{if(prompt){prompt.prompt();await prompt.userChoice;prompt=null;$('#installBanner').classList.add('hidden')}};$('#installClose').onclick=()=>$('#installBanner').classList.add('hidden')}
 
 async function render(){if(!state.unlocked)return;const routes={today:renderToday,university:renderUniversity,practicum:renderPracticum,consult:renderConsult,study:renderStudy};await (routes[state.route]||renderToday)()}
@@ -122,8 +145,306 @@ async function renderConsult(){
 }
 async function openMedSearch(){const local=await NurseDB.all('meds');modal(`<div class="modal-head"><h2>Medicamentos</h2><button class="icon-btn" onclick="closeModal()">×</button></div><label>Buscar por nombre o principio activo</label><div class="form-row"><input class="field" id="medQuery" placeholder="Ej. paracetamol"><button class="btn primary" id="medSearchBtn">Buscar</button></div><div id="medResults" style="margin-top:12px">${local.length?`<div class="subhead">Botiquín local</div><div class="list">${local.slice(0,10).map(m=>medRow(m,true)).join('')}</div>`:noData('Sin medicamentos guardados','Haz una búsqueda online y guarda los que necesites.')}</div>${clinicalNotice()}`);$('#medSearchBtn').onclick=()=>searchCIMA($('#medQuery').value);$('#medQuery').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchCIMA(e.currentTarget.value)}};$$('[data-med-local]').forEach(b=>b.onclick=()=>openMedDetail(b.dataset.medLocal))}
 function medRow(m,local=false){return `<button class="list-row clickable" ${local?`data-med-local="${m.id}"`:`data-med-json='${esc(JSON.stringify(m))}'`}><div class="avatar">Rx</div><div class="grow"><strong>${esc(m.name||m.nombre||'Medicamento')}</strong><div class="sub">${esc(m.cn||m.nregistro||m.registration||'')}</div></div><span class="chev">›</span></button>`}
-async function searchCIMA(q){q=q.trim();if(!q)return toast('Escribe un medicamento');const box=$('#medResults');box.innerHTML='<div class="empty">Buscando en CIMA…</div>';try{let arr=[];if(state.settings.icdWorker&&state.settings.apiMode==='worker'){const r=await fetch(`${state.settings.icdWorker.replace(/\/$/,'')}/cima?query=${encodeURIComponent(q)}`);if(!r.ok)throw new Error('Worker');const data=await r.json();arr=Array.isArray(data)?data:(data.resultados||data.results||[])}else{const urls=[`https://cima.aemps.es/cima/rest/medicamentos?nombre=${encodeURIComponent(q)}`,`https://cima.aemps.es/cima/rest/medicamentos?practiv1=${encodeURIComponent(q)}`];const rs=await Promise.all(urls.map(u=>fetch(u).then(r=>r.ok?r.json():[]).catch(()=>[])));const merged=rs.flatMap(d=>Array.isArray(d)?d:(d.resultados||d.results||[]));const seen=new Set();arr=merged.filter(x=>{const k=x.nregistro||x.cn||x.nombre;if(seen.has(k))return false;seen.add(k);return true})}box.innerHTML=`<div class="list">${arr.slice(0,20).map(x=>{const act=Array.isArray(x.pactivos)?x.pactivos.map(a=>a.nombre||a.principioActivo||String(a)).join(', '):(x.pactivos||x.principioActivo||'');const m={id:String(x.nregistro||x.cn||uid()),name:x.nombre||act||'Medicamento',registration:x.nregistro||'',active:act,raw:x};return medRow(m,false)}).join('')||noData('Sin resultados')}</div>`;$$('[data-med-json]').forEach(b=>b.onclick=()=>openMedRemote(JSON.parse(b.dataset.medJson)))}catch(e){box.innerHTML=`<div class="notice">No se pudo consultar CIMA desde este navegador. Comprueba conexión o configura el Worker en Ajustes. Tu botiquín local sigue disponible offline.</div>`}}
-async function openMedRemote(m){modal(`<div class="modal-head"><h2>${esc(m.name)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p class="small muted">Registro: ${esc(m.registration||'—')}</p><div class="source-card">Fuente: CIMA / AEMPS. NurseFlow no interpreta automáticamente diluciones, compatibilidades ni velocidades si la fuente no las ofrece de forma estructurada.</div><h3>Principio(s) activo(s)</h3><p>${esc(m.active||'Consulta la ficha técnica oficial.')}</p><div class="modal-actions"><button class="btn primary" id="saveMed">Guardar offline</button></div>`);$('#saveMed').onclick=async()=>{await NurseDB.put('meds',{id:m.id,name:m.name,registration:m.registration,active:m.active,raw:m.raw,savedAt:new Date().toISOString()});toast('Guardado en botiquín local');closeModal()}}
+/**
+ * Extracts the active ingredient information returned by CIMA.
+ *
+ * CIMA responses may differ slightly between search and detail endpoints.
+ * This helper normalises the supported structures so that the UI does not
+ * depend on a single property name or response shape.
+ *
+ * @param {object|null|undefined} medicine Raw CIMA medicine object.
+ * @returns {string} Human-readable active ingredient description.
+ */
+function extractActiveIngredients(medicine) {
+  if (!medicine) return '';
+
+  if (Array.isArray(medicine.principiosActivos) && medicine.principiosActivos.length) {
+    return medicine.principiosActivos
+      .map(item => {
+        if (!item) return '';
+        if (typeof item === 'string') return item.trim();
+
+        const name = item.nombre || item.principioActivo || item.descripcion || '';
+        const amount = item.cantidad ?? '';
+        const unit = item.unidad || item.unidadMedida || '';
+
+        return [name, amount, unit]
+          .filter(value => value !== '' && value !== null && value !== undefined)
+          .join(' ')
+          .trim();
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  if (typeof medicine.pactivos === 'string' && medicine.pactivos.trim()) {
+    return medicine.pactivos.trim();
+  }
+
+  if (Array.isArray(medicine.pactivos)) {
+    return medicine.pactivos
+      .map(item => {
+        if (!item) return '';
+        if (typeof item === 'string') return item.trim();
+        return item.nombre || item.principioActivo || item.descripcion || '';
+      })
+      .filter(Boolean)
+      .join(', ');
+  }
+
+  if (typeof medicine.principioActivo === 'string') {
+    return medicine.principioActivo.trim();
+  }
+
+  return '';
+}
+
+/**
+ * Searches CIMA by commercial name and active ingredient.
+ *
+ * Search results are intentionally treated as summaries. When a user opens a
+ * result, NurseFlow performs a second request to the detail endpoint so the
+ * medicine card is built from the authoritative full CIMA record.
+ *
+ * @param {string} q User-entered search query.
+ */
+async function searchCIMA(q) {
+  q = String(q || '').trim();
+  if (!q) return toast('Escribe un medicamento');
+
+  const box = $('#medResults');
+  box.innerHTML = '<div class="empty">Buscando en CIMA…</div>';
+
+  try {
+    let results = [];
+
+    if (state.settings.icdWorker && state.settings.apiMode === 'worker') {
+      const response = await fetch(
+        `${state.settings.icdWorker.replace(/\/$/, '')}/cima?query=${encodeURIComponent(q)}`
+      );
+
+      if (!response.ok) throw new Error(`Worker CIMA search ${response.status}`);
+
+      const data = await response.json();
+      results = Array.isArray(data) ? data : (data.resultados || data.results || []);
+    } else {
+      const urls = [
+        `https://cima.aemps.es/cima/rest/medicamentos?nombre=${encodeURIComponent(q)}`,
+        `https://cima.aemps.es/cima/rest/medicamentos?practiv1=${encodeURIComponent(q)}`
+      ];
+
+      const responses = await Promise.all(
+        urls.map(url =>
+          fetch(url)
+            .then(response => response.ok ? response.json() : [])
+            .catch(() => [])
+        )
+      );
+
+      const merged = responses.flatMap(data =>
+        Array.isArray(data) ? data : (data.resultados || data.results || [])
+      );
+
+      // CIMA can return the same medicine from both queries. De-duplicate it
+      // before rendering the result list.
+      const seen = new Set();
+      results = merged.filter(item => {
+        const key = item.nregistro || item.cn || item.nombre;
+        if (!key || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
+    box.innerHTML = `
+      <div class="list">
+        ${results.slice(0, 20).map(item => {
+          const active = extractActiveIngredients(item);
+          const medicine = {
+            id: String(item.nregistro || item.cn || uid()),
+            name: item.nombre || active || 'Medicamento',
+            registration: item.nregistro || '',
+            active,
+            raw: item
+          };
+
+          return medRow(medicine, false);
+        }).join('') || noData('Sin resultados')}
+      </div>
+    `;
+
+    $$('[data-med-json]').forEach(button => {
+      button.onclick = () => openMedRemote(JSON.parse(button.dataset.medJson));
+    });
+  } catch (error) {
+    console.error('CIMA search failed:', error);
+    box.innerHTML = `
+      <div class="notice">
+        No se pudo consultar CIMA desde este navegador. Comprueba la conexión
+        o configura el Worker en Ajustes. Tu botiquín local sigue disponible offline.
+      </div>
+    `;
+  }
+}
+
+/**
+ * Retrieves the complete CIMA record for a medicine registration number.
+ *
+ * The request can be made directly from the PWA or through the configured
+ * Cloudflare Worker. Keeping both paths makes NurseFlow usable in environments
+ * where browser CORS restrictions prevent direct access to CIMA.
+ *
+ * @param {string} registrationNumber CIMA registration number (nregistro).
+ * @returns {Promise<object>} Full CIMA medicine record.
+ */
+async function getCimaMedicineDetail(registrationNumber) {
+  const nregistro = String(registrationNumber || '').trim();
+  if (!nregistro) throw new Error('CIMA registration number is required');
+
+  if (state.settings.icdWorker && state.settings.apiMode === 'worker') {
+    const response = await fetch(
+      `${state.settings.icdWorker.replace(/\/$/, '')}/cima/detail?nregistro=${encodeURIComponent(nregistro)}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`Worker CIMA detail ${response.status}`);
+    }
+
+    return response.json();
+  }
+
+  const response = await fetch(
+    `https://cima.aemps.es/cima/rest/medicamento?nregistro=${encodeURIComponent(nregistro)}`
+  );
+
+  if (!response.ok) {
+    throw new Error(`CIMA detail ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Opens a medicine result and upgrades the search summary with the full CIMA
+ * record before rendering it. This fixes the previous behaviour where the
+ * modal displayed only the registration number and a generic fallback for the
+ * active ingredient.
+ *
+ * @param {object} medicine Search-result model created by searchCIMA().
+ */
+async function openMedRemote(medicine) {
+  modal(`
+    <div class="modal-head">
+      <h2>${esc(medicine.name)}</h2>
+      <button class="icon-btn" onclick="closeModal()">×</button>
+    </div>
+    <div class="empty">Cargando ficha oficial de CIMA…</div>
+  `);
+
+  try {
+    const detail = await getCimaMedicineDetail(medicine.registration);
+    const active = extractActiveIngredients(detail) || medicine.active || '';
+
+    const routes = Array.isArray(detail?.viasAdministracion)
+      ? detail.viasAdministracion
+          .map(route => route?.nombre || route?.descripcion || '')
+          .filter(Boolean)
+          .join(', ')
+      : '';
+
+    const pharmaceuticalForm =
+      detail?.formaFarmaceutica?.nombre ||
+      detail?.formaFarmaceuticaSimplificada?.nombre ||
+      '';
+
+    const laboratory =
+      detail?.labtitular ||
+      detail?.laboratorioTitular ||
+      detail?.titular ||
+      '';
+
+    const name = detail?.nombre || medicine.name;
+
+    // Keep the in-memory object complete so an offline save contains the
+    // detailed record rather than only the original search result.
+    medicine.name = name;
+    medicine.active = active;
+    medicine.raw = detail || medicine.raw;
+
+    modal(`
+      <div class="modal-head">
+        <h2>${esc(name)}</h2>
+        <button class="icon-btn" onclick="closeModal()">×</button>
+      </div>
+
+      <p class="small muted">Registro: ${esc(medicine.registration || '—')}</p>
+      <div class="source-card">Fuente oficial: CIMA / AEMPS.</div>
+
+      <h3>Principio(s) activo(s)</h3>
+      <p>${esc(active || 'No disponible en la respuesta estructurada de CIMA.')}</p>
+
+      ${pharmaceuticalForm ? `
+        <h3>Forma farmacéutica</h3>
+        <p>${esc(pharmaceuticalForm)}</p>
+      ` : ''}
+
+      ${routes ? `
+        <h3>Vía(s) de administración</h3>
+        <p>${esc(routes)}</p>
+      ` : ''}
+
+      ${laboratory ? `
+        <h3>Laboratorio titular</h3>
+        <p>${esc(laboratory)}</p>
+      ` : ''}
+
+      <div class="notice info">
+        Para diluciones, velocidades de administración, incompatibilidades y
+        otras instrucciones clínicas, consulta la ficha técnica oficial vigente.
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn primary" id="saveMed">Guardar offline</button>
+      </div>
+    `);
+
+    $('#saveMed').onclick = async () => {
+      await NurseDB.put('meds', {
+        id: medicine.id,
+        name,
+        registration: medicine.registration,
+        active,
+        raw: detail,
+        savedAt: new Date().toISOString()
+      });
+
+      toast('Guardado en botiquín local');
+      closeModal();
+    };
+  } catch (error) {
+    console.error('CIMA detail failed:', error);
+
+    // If the detail endpoint is temporarily unavailable, keep the user inside
+    // the medicine flow and show every piece of information that was present in
+    // the original search response.
+    modal(`
+      <div class="modal-head">
+        <h2>${esc(medicine.name)}</h2>
+        <button class="icon-btn" onclick="closeModal()">×</button>
+      </div>
+
+      <p class="small muted">Registro: ${esc(medicine.registration || '—')}</p>
+      <div class="source-card">Fuente oficial: CIMA / AEMPS.</div>
+
+      <h3>Principio(s) activo(s)</h3>
+      <p>${esc(medicine.active || 'No disponible')}</p>
+
+      <div class="notice">
+        No se pudo cargar la ficha completa de CIMA en este momento.
+      </div>
+    `);
+  }
+}
 async function openMedDetail(id){const m=await NurseDB.get('meds',id);if(!m)return;modal(`<div class="modal-head"><h2>${esc(m.name)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p class="small muted">Disponible offline · guardado ${m.savedAt?new Date(m.savedAt).toLocaleDateString('es-ES'):''}</p><p><strong>Registro:</strong> ${esc(m.registration||'—')}</p><p><strong>Principio(s) activo(s):</strong> ${esc(m.active||'—')}</p><div class="source-card">Fuente original: CIMA / AEMPS. Verifica siempre la ficha técnica vigente antes de usar información de administración.</div><div class="modal-actions"><button class="btn danger" id="delMed">Eliminar del botiquín</button></div>`);$('#delMed').onclick=async()=>{await NurseDB.remove('meds',id);closeModal();toast('Eliminado')}}
 async function openScanner(){modal(`<div class="modal-head"><h2>Escáner de código</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div id="scannerArea"></div><p class="small muted">Si tu navegador no ofrece detección de códigos compatible, puedes introducir el código manualmente.</p><label>Código manual</label><div class="form-row"><input class="field" id="manualBarcode" inputmode="numeric"><button class="btn primary" id="barcodeSearch">Buscar</button></div>`);const area=$('#scannerArea');if('BarcodeDetector'in window){area.innerHTML=`<div class="scanner"><video id="scanVideo" autoplay playsinline></video><div class="scanner-line"></div></div><button class="btn block" id="startScan" style="margin-top:10px">Activar cámara</button>`;$('#startScan').onclick=startNativeScan}else area.innerHTML='<div class="notice">Este iPhone/navegador no expone BarcodeDetector. Usa el código manual; la app mantiene el resto de funciones sin depender de la cámara.</div>';$('#barcodeSearch').onclick=()=>searchBarcode($('#manualBarcode').value)}
 async function startNativeScan(){try{const video=$('#scanVideo');const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});video.srcObject=stream;const detector=new BarcodeDetector({formats:['ean_13','ean_8','data_matrix','code_128']});const loop=async()=>{if(!video.srcObject)return;try{const codes=await detector.detect(video);if(codes.length){stream.getTracks().forEach(t=>t.stop());$('#manualBarcode').value=codes[0].rawValue;searchBarcode(codes[0].rawValue);return}}catch{}requestAnimationFrame(loop)};requestAnimationFrame(loop)}catch{toast('No se pudo abrir la cámara')}}
