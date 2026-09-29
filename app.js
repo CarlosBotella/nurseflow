@@ -5,7 +5,44 @@ const isoToday=()=>new Date().toISOString().slice(0,10);
 const dateFmt=d=>new Intl.DateTimeFormat('es-ES',{day:'numeric',month:'short',year:'numeric'}).format(new Date(`${d}T12:00:00`));
 const weekday=d=>new Intl.DateTimeFormat('es-ES',{weekday:'long'}).format(new Date(`${d}T12:00:00`));
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
-const state={route:'today',settings:{profileName:'',course:'2º Enfermería',practicum:'Prácticum I',hospital:'Hospital La Fe',service:'',periodStart:'2026-09-21',periodEnd:'2026-11-27',shift:'15:00–22:00',theme:'system',icdWorker:'',apiMode:'direct',lockEnabled:false,lockMethod:'pin',pinHash:'',autoLock:5,showClinicalWarnings:true},unlocked:true,lastActive:Date.now()};
+/**
+ * NurseFlow application controller.
+ *
+ * Architecture principles:
+ * - local-first: academic and practicum data stay in IndexedDB;
+ * - no assumptions about hospital, service, practicum dates or active placement;
+ * - first-run onboarding configures only the minimum information needed;
+ * - medication information is obtained from official CIMA/AEMPS resources.
+ */
+const state = {
+  route: 'today',
+  settings: {
+    onboardingComplete: false,
+    profileName: '',
+    university: 'UCV',
+    academicYear: '2026-2027',
+    courseNumber: '1',
+    course: '1º Enfermería',
+    selectedSubjects: [],
+    hasPracticum: false,
+    practicum: '',
+    hospital: '',
+    service: '',
+    periodStart: '',
+    periodEnd: '',
+    shift: '',
+    theme: 'system',
+    icdWorker: '',
+    apiMode: 'direct',
+    lockEnabled: false,
+    lockMethod: 'pin',
+    pinHash: '',
+    autoLock: 5,
+    showClinicalWarnings: true
+  },
+  unlocked: true,
+  lastActive: Date.now()
+};
 
 function toast(msg){const t=$('#toast');t.textContent=msg;t.classList.remove('hidden');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.add('hidden'),2400)}
 function modal(html){$('#modalContent').innerHTML=html;$('#modal').showModal()}
@@ -14,14 +51,42 @@ function section(title,action=''){return `<div class="section-head"><h2>${title}
 function syncNav(){$$('.nav-item').forEach(x=>x.classList.toggle('active',x.dataset.route===state.route))}
 function setTitle(title,context='NurseFlow'){$('#pageTitle').textContent=title;$('#contextLabel').textContent=context}
 function noData(title,body=''){return `<div class="empty"><strong>${esc(title)}</strong>${body?`<span>${esc(body)}</span>`:''}</div>`}
+function taskRow(t){return `<div class="list-row"><div class="avatar">✓</div><div class="grow"><strong>${esc(t.title)}</strong><div class="sub">${t.due?dateFmt(t.due):'Sin fecha'}${t.category?' · '+esc(t.category):''}</div></div></div>`}
+function medRow(m,local=false){return `<button class="list-row clickable" ${local?`data-med-local="${esc(m.id)}"`:`data-med-json='${esc(JSON.stringify(m))}'`}><div class="avatar">Rx</div><div class="grow"><strong>${esc(m.name||m.nombre||'Medicamento')}</strong><div class="sub">${esc(m.cn||m.nregistro||m.registration||'')}</div></div><span class="chev">›</span></button>`}
 function clinicalNotice(){return state.settings.showClinicalWarnings?`<div class="notice">Uso académico y organizativo. Verifica siempre la prescripción, ficha técnica, protocolo vigente de la unidad y supervisión clínica. No sustituye una valoración profesional.</div>`:''}
 function onlineStatus(){const el=$('#syncStatus');el.className=`status-dot ${navigator.onLine?'online':'offline'}`;el.title=navigator.onLine?'Online':'Offline'}
 
 async function boot(){
   await NurseDB.open();
-  const saved=await NurseDB.get('settings','main'); if(saved) state.settings={...state.settings,...saved.value};
-  applyTheme(); await seed(); bindBase(); registerSW(); setupInstall(); onlineStatus();
-  if(state.settings.lockEnabled){state.unlocked=false;showLock()} else render();
+  const saved = await NurseDB.get('settings','main');
+  if(saved) state.settings = {...state.settings, ...saved.value};
+
+  // Migrate legacy installations that contained demo practicum values.
+  if(saved && !('onboardingComplete' in saved.value)){
+    Object.assign(state.settings,{
+      onboardingComplete:false,
+      hasPracticum:false,
+      practicum:'', hospital:'', service:'', periodStart:'', periodEnd:'', shift:'',
+      courseNumber:String((saved.value.course || '1').match(/\d/)?.[0] || '1'),
+      selectedSubjects:[]
+    });
+    state.settings.course = `${state.settings.courseNumber}º Enfermería`;
+    await saveSettings();
+  }
+
+  applyTheme();
+  await seed();
+  bindBase();
+  registerSW();
+  setupInstall();
+  onlineStatus();
+
+  if(!state.settings.onboardingComplete){
+    showOnboarding();
+    return;
+  }
+  if(state.settings.lockEnabled){state.unlocked=false;showLock();}
+  else render();
 }
 async function seed(){
   if((await NurseDB.all('procedures')).length===0){
@@ -47,89 +112,110 @@ function bindBase(){
 function go(route){state.route=route;syncNav();render();window.scrollTo({top:0,behavior:'instant'})}
 function applyTheme(){let t=state.settings.theme;if(t==='system')t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';document.documentElement.dataset.theme=t}
 async function saveSettings(){await NurseDB.put('settings',{id:'main',value:state.settings});applyTheme()}
-function registerSW(){
-  if(!('serviceWorker' in navigator)) return;
-
-  let reloading = false;
-
-  navigator.serviceWorker.addEventListener('controllerchange',()=>{
-    if(reloading) return;
-    reloading = true;
-    window.location.reload();
-  });
-
-  navigator.serviceWorker
-    .register('./sw.js',{updateViaCache:'none'})
-    .then(async registration=>{
-      try{
-        await registration.update();
-      }catch(error){
-        console.warn('No se pudo comprobar una actualización del Service Worker:',error);
-      }
-    })
-    .catch(error=>{
-      console.warn('No se pudo registrar el Service Worker:',error);
-    });
-}
+function registerSW(){if('serviceWorker'in navigator)navigator.serviceWorker.register('./sw.js').catch(()=>{})}
 function setupInstall(){let prompt;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();prompt=e;$('#installBanner').classList.remove('hidden')});$('#installBtn').onclick=async()=>{if(prompt){prompt.prompt();await prompt.userChoice;prompt=null;$('#installBanner').classList.add('hidden')}};$('#installClose').onclick=()=>$('#installBanner').classList.add('hidden')}
+
+
+/** Return the curriculum subjects exposed for the configured course. */
+function currentSubjects(){
+  return (NURSE_DATA.ucv?.subjects?.[String(state.settings.courseNumber)] || [])
+    .map(([code,name,semester,ects])=>({code,name,semester,ects}));
+}
+
+/** First-run setup with no assumptions about clinical placement. */
+function showOnboarding(){
+  state.unlocked=true;
+  const ucv=NURSE_DATA.ucv;
+  const subjectOptions=course=>(ucv.subjects[String(course)]||[])
+    .map(([code,name,semester])=>`<label class="subject-check"><input type="checkbox" name="subjects" value="${esc(code)}"><span><strong>${esc(name)}</strong><small>${semester==='Anual'?'Anual':`Semestre ${semester}`}</small></span></label>`).join('');
+
+  $('#app').innerHTML=`<section class="onboarding">
+    <div class="onboarding-brand"><span>NF</span><div><p>NurseFlow</p><h1>Configura tu espacio</h1></div></div>
+    <p class="muted">La configuración se guarda únicamente en este dispositivo. No necesitas crear una cuenta.</p>
+    <form id="onboardingForm" class="card onboarding-card">
+      <label>Nombre <span class="muted">(opcional)</span></label><input class="field" name="name" placeholder="Ej. Marta">
+      <label>Universidad</label><select class="field" name="university" id="onboardUniversity"><option value="UCV">Universidad Católica de Valencia (UCV)</option><option value="other">Otra universidad</option></select>
+      <div id="ucvCourseBlock"><label>Curso</label><select class="field" name="course" id="onboardCourse"><option value="1">1º Enfermería</option><option value="2">2º Enfermería</option><option value="3">3º Enfermería</option><option value="4">4º Enfermería</option></select><p class="helper">Asignaturas sugeridas según el plan publicado por la UCV para ${esc(ucv.academicYear)}. Después puedes añadir cualquier actividad manualmente.</p><label>¿Qué asignaturas cursas?</label><div id="onboardSubjects" class="subject-picker">${subjectOptions('1')}</div></div>
+      <label class="switch-row"><span><strong>Ya tengo prácticas asignadas</strong><span class="sub">Activa diario, portfolio y seguimiento del Prácticum.</span></span><span class="switch"><input id="onboardHasPracticum" type="checkbox"><span class="slider"></span></span></label>
+      <div id="onboardPracticum" class="hidden"><label>Nombre del Prácticum</label><input class="field" name="practicum" placeholder="Ej. Prácticum I"><label>Centro</label><input class="field" name="hospital" placeholder="Hospital, centro de salud, residencia…"><label>Servicio / unidad <span class="muted">(opcional)</span></label><input class="field" name="service" placeholder="Ej. Medicina interna"><div class="form-row"><div><label>Fecha de inicio <span class="muted">(opcional)</span></label><input class="field" type="date" name="start"></div><div><label>Fecha de fin <span class="muted">(opcional)</span></label><input class="field" type="date" name="end"></div></div><label>Horario habitual <span class="muted">(opcional)</span></label><input class="field" name="shift" placeholder="Ej. 08:00–15:00"></div>
+      <div class="modal-actions"><button class="btn primary block">Empezar</button></div>
+    </form></section>`;
+
+  $('.topbar').classList.add('hidden'); $('.bottom-nav').classList.add('hidden');
+  $('#onboardCourse').onchange=e=>$('#onboardSubjects').innerHTML=subjectOptions(e.target.value);
+  $('#onboardUniversity').onchange=e=>$('#ucvCourseBlock').classList.toggle('hidden',e.target.value!=='UCV');
+  $('#onboardHasPracticum').onchange=e=>$('#onboardPracticum').classList.toggle('hidden',!e.target.checked);
+  $('#onboardingForm').onsubmit=async e=>{
+    e.preventDefault(); const f=new FormData(e.target); const university=f.get('university'); const course=university==='UCV'?f.get('course'):'1'; const has=$('#onboardHasPracticum').checked;
+    Object.assign(state.settings,{onboardingComplete:true,profileName:f.get('name').trim(),university,academicYear:ucv.academicYear,courseNumber:String(course),course:`${course}º Enfermería`,selectedSubjects:f.getAll('subjects'),hasPracticum:has,practicum:has?f.get('practicum').trim():'',hospital:has?f.get('hospital').trim():'',service:has?f.get('service').trim():'',periodStart:has?f.get('start'):'',periodEnd:has?f.get('end'):'',shift:has?f.get('shift').trim():''});
+    await saveSettings(); $('.topbar').classList.remove('hidden'); $('.bottom-nav').classList.remove('hidden'); render();
+  };
+}
+
+function practicumIsCurrent(){
+  if(!state.settings.hasPracticum)return false;
+  const today=isoToday();
+  if(state.settings.periodStart&&today<state.settings.periodStart)return false;
+  if(state.settings.periodEnd&&today>state.settings.periodEnd)return false;
+  return true;
+}
 
 async function render(){if(!state.unlocked)return;const routes={today:renderToday,university:renderUniversity,practicum:renderPracticum,consult:renderConsult,study:renderStudy};await (routes[state.route]||renderToday)()}
 
 async function renderToday(){
   setTitle('Hoy',state.settings.profileName||'NurseFlow');
   const [cases,tasks,days,schedule]=await Promise.all([NurseDB.all('cases'),NurseDB.all('tasks'),NurseDB.all('days'),NurseDB.all('schedule')]);
-  const today=isoToday(), todayCases=cases.filter(x=>x.date===today), todayDay=days.find(x=>x.date===today), pending=tasks.filter(x=>!x.done&&(!x.due||x.due>=today)).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
-  const dow=new Date().getDay(); const todayClasses=schedule.filter(x=>Number(x.day)===dow).sort((a,b)=>a.start.localeCompare(b.start));
-  const start=new Date(state.settings.periodStart+'T12:00:00'),end=new Date(state.settings.periodEnd+'T12:00:00'),now=new Date(); const p=clamp(Math.round((now-start)/(end-start)*100),0,100);
-  $('#app').innerHTML=`
-    <div class="card hero"><p class="small muted">${esc(state.settings.hospital)}${state.settings.service?' · '+esc(state.settings.service):''}</p><h2>${esc(state.settings.practicum)}</h2><p>${dateFmt(state.settings.periodStart)} → ${dateFmt(state.settings.periodEnd)} · ${esc(state.settings.shift)}</p><div class="progress"><span style="width:${p}%"></span></div><p class="small muted">Progreso temporal aproximado: ${p}%</p><div class="btn-row"><button class="btn secondary" id="todayRegister">Registrar día</button><button class="btn secondary" id="todayPrac">Ver Prácticum</button></div></div>
-    ${section('Ahora')}
-    <div class="grid-2">
-      <button class="quick" id="quickCase"><span class="ico">＋</span><div><strong>Nuevo caso</strong><small>Patología + procedimientos</small></div></button>
-      <button class="quick" id="quickBatea"><span class="ico">▤</span><div><strong>La Batea</strong><small>Material y técnicas</small></div></button>
-      <button class="quick" id="quickMed"><span class="ico">Rx</span><div><strong>Medicamentos</strong><small>CIMA + botiquín offline</small></div></button>
-      <button class="quick" id="quickCalc"><span class="ico">÷</span><div><strong>Calculadoras</strong><small>Goteo, dosis, balance…</small></div></button>
-    </div>
-    ${section('Resumen de hoy')}
-    <div class="metric-row"><div class="metric"><b>${todayCases.length}</b><span>casos</span></div><div class="metric"><b>${todayCases.reduce((n,c)=>n+(c.procedures?.length||0),0)}</b><span>técnicas</span></div><div class="metric"><b>${todayDay?.attendanceOfficial?'✓':'–'}</b><span>UCVEvalúa</span></div><div class="metric"><b>${pending.length}</b><span>pendientes</span></div></div>
-    ${todayClasses.length?`${section('Universidad hoy')}<div class="list">${todayClasses.map(x=>`<div class="list-row"><div class="avatar">${esc(x.start.slice(0,2))}</div><div class="grow"><strong>${esc(x.title)}</strong><div class="sub">${esc(x.start)}–${esc(x.end)}${x.room?' · '+esc(x.room):''}</div></div></div>`).join('')}</div>`:''}
-    ${pending.length?`${section('Próximos pendientes','<button id="allTasks">Ver todos</button>')}<div class="list">${pending.slice(0,3).map(taskRow).join('')}</div>`:''}
-    ${clinicalNotice()}`;
-  $('#todayRegister').onclick=openDayLog; $('#todayPrac').onclick=()=>go('practicum'); $('#quickCase').onclick=openCaseForm; $('#quickBatea').onclick=()=>openBatea(); $('#quickMed').onclick=openMedSearch; $('#quickCalc').onclick=openCalculators; $('#allTasks')&&($('#allTasks').onclick=openTasks);
+  const today=isoToday();
+  const pending=tasks.filter(x=>!x.done&&(!x.due||x.due>=today)).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+  const dow=new Date().getDay();
+  const todayClasses=schedule.filter(x=>Number(x.day)===dow).sort((a,b)=>a.start.localeCompare(b.start));
+  const practiceActive=practicumIsCurrent();
+  const todayCases=cases.filter(x=>x.date===today); const todayDay=days.find(x=>x.date===today);
+  let practiceCard='';
+  if(state.settings.hasPracticum){
+    let progress='';
+    if(state.settings.periodStart&&state.settings.periodEnd){const start=new Date(state.settings.periodStart+'T12:00:00'),end=new Date(state.settings.periodEnd+'T12:00:00'),denom=end-start;if(denom>0){const p=clamp(Math.round((new Date()-start)/denom*100),0,100);progress=`<div class="progress"><span style="width:${p}%"></span></div><p class="small muted">Progreso temporal aproximado: ${p}%</p>`}}
+    practiceCard=`<div class="card hero"><p class="small muted">${esc(state.settings.hospital||'Prácticas configuradas')}${state.settings.service?' · '+esc(state.settings.service):''}</p><h2>${esc(state.settings.practicum||'Prácticum')}</h2><p>${state.settings.periodStart?dateFmt(state.settings.periodStart):'Inicio por definir'}${state.settings.periodEnd?' → '+dateFmt(state.settings.periodEnd):''}${state.settings.shift?' · '+esc(state.settings.shift):''}</p>${progress}<div class="btn-row"><button class="btn secondary" id="todayPrac">Ver Prácticum</button>${practiceActive?'<button class="btn secondary" id="todayRegister">Registrar día</button>':''}</div></div>`;
+  }
+  const academicQuick=`<button class="quick" id="quickSchedule"><span class="ico">▦</span><div><strong>Horario</strong><small>Semana tipo y clases</small></div></button><button class="quick" id="quickTasks"><span class="ico">✓</span><div><strong>Pendientes</strong><small>Entregas y exámenes</small></div></button><button class="quick" id="quickMed"><span class="ico">Rx</span><div><strong>Medicamentos</strong><small>CIMA / AEMPS</small></div></button><button class="quick" id="quickStudy"><span class="ico">◫</span><div><strong>Estudio</strong><small>Flashcards y test</small></div></button>`;
+  const practiceQuick=practiceActive?`<button class="quick" id="quickCase"><span class="ico">＋</span><div><strong>Nuevo caso</strong><small>Registro académico anonimizado</small></div></button><button class="quick" id="quickBatea"><span class="ico">▤</span><div><strong>La Batea</strong><small>Material y procedimientos</small></div></button>`:'';
+  $('#app').innerHTML=`${practiceCard}${section(practiceActive?'Ahora':'Tu día')}<div class="grid-2">${practiceActive?practiceQuick+academicQuick:academicQuick}</div>${todayClasses.length?`${section('Universidad hoy')}<div class="list">${todayClasses.map(x=>`<div class="list-row"><div class="avatar">${esc(x.start.slice(0,2))}</div><div class="grow"><strong>${esc(x.title)}</strong><div class="sub">${esc(x.start)}–${esc(x.end)}${x.room?' · '+esc(x.room):''}</div></div></div>`).join('')}</div>`:`${section('Universidad hoy')}${noData('Sin clases configuradas para hoy','Añade tu semana tipo en Universidad.')}`}${practiceActive?`${section('Prácticum hoy')}<div class="metric-row"><div class="metric"><b>${todayCases.length}</b><span>casos</span></div><div class="metric"><b>${todayCases.reduce((n,c)=>n+(c.procedures?.length||0),0)}</b><span>técnicas</span></div><div class="metric"><b>${todayDay?.attendanceOfficial?'✓':'–'}</b><span>asistencia</span></div><div class="metric"><b>${pending.length}</b><span>pendientes</span></div></div>`:''}${pending.length?`${section('Próximos pendientes','<button id="allTasks">Ver todos</button>')}<div class="list">${pending.slice(0,3).map(taskRow).join('')}</div>`:''}${clinicalNotice()}`;
+  $('#todayPrac')&&($('#todayPrac').onclick=()=>go('practicum')); $('#todayRegister')&&($('#todayRegister').onclick=openDayLog); $('#quickCase')&&($('#quickCase').onclick=openCaseForm); $('#quickBatea')&&($('#quickBatea').onclick=()=>openBatea()); $('#quickSchedule').onclick=()=>go('university'); $('#quickTasks').onclick=openTasks; $('#quickMed').onclick=openMedSearch; $('#quickStudy').onclick=()=>go('study'); $('#allTasks')&&($('#allTasks').onclick=openTasks);
 }
-
 async function renderUniversity(){
   setTitle('Universidad',state.settings.course);
   const [schedule,tasks,exceptions]=await Promise.all([NurseDB.all('schedule'),NurseDB.all('tasks'),NurseDB.all('exceptions')]);
   const byDay=[1,2,3,4,5,6,0].map(day=>schedule.filter(x=>+x.day===day).sort((a,b)=>a.start.localeCompare(b.start)));
-  $('#app').innerHTML=`
-    ${section('Semana tipo','<button id="addClass">Añadir</button>')}
-    <div class="card"><div class="calendar-week">${weekStrip(schedule)}</div><div class="divider"></div>${byDay.map((rows,i)=>rows.length?`<div class="subhead">${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'][i]}</div>${rows.map(x=>`<div class="list-row clickable" data-class="${x.id}"><div class="avatar">${esc(x.start.slice(0,2))}</div><div class="grow"><strong>${esc(x.title)}</strong><div class="sub">${esc(x.start)}–${esc(x.end)}${x.room?' · '+esc(x.room):''}</div></div><span class="chev">›</span></div>`).join('')}`:'').join('')||noData('Configura tu semana','Añade las clases una sola vez y reutilízalas durante el cuatrimestre.')}</div>
-    <div class="grid-2"><button class="quick" id="exceptionsBtn"><span class="ico">↺</span><div><strong>Excepciones</strong><small>${exceptions.length} fechas especiales</small></div></button><button class="quick" id="tasksBtn"><span class="ico">✓</span><div><strong>Pendientes</strong><small>${tasks.filter(t=>!t.done).length} por completar</small></div></button><button class="quick" id="paeBtn"><span class="ico">PAE</span><div><strong>PAE</strong><small>NANDA/NIC/NOC manual/importado</small></div></button><button class="quick" id="studyBtn"><span class="ico">◫</span><div><strong>Estudio</strong><small>Flashcards y test</small></div></button></div>
-    <div class="notice info">NANDA-I, NIC y NOC son terminologías con licencias específicas. NurseFlow incluye el espacio de trabajo y la importación de contenido autorizado, pero no distribuye una base propietaria sin licencia.</div>`;
+  const subjects=currentSubjects(),selected=new Set(state.settings.selectedSubjects||[]),selectedNames=subjects.filter(s=>selected.has(s.code)).map(s=>s.name);
+  $('#app').innerHTML=`<div class="card compact"><strong>${esc(state.settings.course)}</strong><p class="small muted">${state.settings.university==='UCV'?`Plan UCV ${esc(NURSE_DATA.ucv.planByCourse[state.settings.courseNumber]||'')} · ${esc(state.settings.academicYear)}`:'Plan personalizado'}</p>${selectedNames.length?`<div class="tag-cloud">${selectedNames.map(n=>`<span class="tag">${esc(n)}</span>`).join('')}</div>`:'<p class="small muted">No has seleccionado asignaturas. Puedes cambiarlas en Ajustes.</p>'}</div>${section('Semana tipo','<button id="addClass">Añadir</button>')}<div class="card"><div class="calendar-week">${weekStrip(schedule)}</div><div class="divider"></div>${byDay.map((rows,i)=>rows.length?`<div class="subhead">${['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'][i]}</div>${rows.map(x=>`<div class="list-row clickable" data-class="${x.id}"><div class="avatar">${esc(x.start.slice(0,2))}</div><div class="grow"><strong>${esc(x.title)}</strong><div class="sub">${esc(x.start)}–${esc(x.end)}${x.room?' · '+esc(x.room):''}</div></div><span class="chev">›</span></div>`).join('')}`:'').join('')||noData('Configura tu semana','Elige una asignatura de tu curso, día y horario.')}</div><div class="grid-2"><button class="quick" id="exceptionsBtn"><span class="ico">↺</span><div><strong>Excepciones</strong><small>${exceptions.length} fechas especiales</small></div></button><button class="quick" id="tasksBtn"><span class="ico">✓</span><div><strong>Pendientes</strong><small>${tasks.filter(t=>!t.done).length} por completar</small></div></button><button class="quick" id="paeBtn"><span class="ico">PAE</span><div><strong>PAE</strong><small>NANDA/NIC/NOC manual/importado</small></div></button><button class="quick" id="studyBtn"><span class="ico">◫</span><div><strong>Estudio</strong><small>Flashcards y test</small></div></button></div>${state.settings.university==='UCV'?'<div class="notice info">La lista de asignaturas se precarga desde el plan de estudios público de la UCV para agilizar el horario. Los horarios concretos los introduce cada estudiante.</div>':''}`;
   $('#addClass').onclick=()=>openClassForm(); $$('[data-class]').forEach(b=>b.onclick=()=>openClassForm(b.dataset.class)); $('#exceptionsBtn').onclick=openExceptions; $('#tasksBtn').onclick=openTasks; $('#paeBtn').onclick=openPAE; $('#studyBtn').onclick=()=>go('study');
 }
 function weekStrip(schedule){const base=new Date();const monday=new Date(base);const delta=(base.getDay()+6)%7;monday.setDate(base.getDate()-delta);return Array.from({length:7},(_,i)=>{const d=new Date(monday);d.setDate(monday.getDate()+i);const day=(i+1)%7;const has=schedule.some(x=>+x.day===day);return `<div class="day-chip ${d.toDateString()===base.toDateString()?'today':''} ${has?'has':''}">${['L','M','X','J','V','S','D'][i]}<b>${d.getDate()}</b></div>`}).join('')}
-async function openClassForm(id){const row=id?await NurseDB.get('schedule',id):null;modal(`<div class="modal-head"><h2>${row?'Editar':'Añadir'} actividad</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="classForm"><label>Asignatura / actividad</label><input class="field" name="title" required value="${esc(row?.title||'')}"><div class="form-row"><div><label>Día</label><select class="field" name="day">${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map((x,i)=>`<option value="${i}" ${row?.day==i?'selected':''}>${x}</option>`).join('')}</select></div><div><label>Aula</label><input class="field" name="room" value="${esc(row?.room||'')}"></div></div><div class="form-row"><div><label>Inicio</label><input class="field" type="time" name="start" required value="${esc(row?.start||'09:00')}"></div><div><label>Fin</label><input class="field" type="time" name="end" required value="${esc(row?.end||'11:00')}"></div></div><div class="modal-actions">${row?'<button type="button" class="btn danger" id="deleteClass">Eliminar</button>':''}<button type="button" class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary">Guardar</button></div></form>`);$('#classForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await NurseDB.put('schedule',{id:row?.id||uid(),title:f.get('title').trim(),day:+f.get('day'),room:f.get('room').trim(),start:f.get('start'),end:f.get('end')});closeModal();render();toast('Guardado')}; if(row)$('#deleteClass').onclick=async()=>{await NurseDB.remove('schedule',row.id);closeModal();render();toast('Eliminado')}}
+async function openClassForm(id){
+  const row=id?await NurseDB.get('schedule',id):null; const subjects=currentSubjects(); const selected=new Set(state.settings.selectedSubjects||[]); const preferred=subjects.filter(s=>selected.size===0||selected.has(s.code)); const options=preferred.map(s=>`<option value="${esc(s.name)}" ${row?.title===s.name?'selected':''}>${esc(s.name)}</option>`).join(''); const isCustom=row&&!preferred.some(s=>s.name===row.title);
+  modal(`<div class="modal-head"><h2>${row?'Editar':'Añadir'} actividad</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="classForm"><label>Asignatura / actividad</label>${state.settings.university==='UCV'?`<select class="field" id="subjectSelect"><option value="">Selecciona…</option>${options}<option value="__custom" ${isCustom?'selected':''}>Otra actividad…</option></select><input class="field ${isCustom?'':'hidden'}" id="customSubject" placeholder="Nombre de la actividad" value="${isCustom?esc(row.title):''}" style="margin-top:8px">`:`<input class="field" id="customSubject" value="${esc(row?.title||'')}" required>`}<div class="form-row"><div><label>Día</label><select class="field" name="day">${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map((x,i)=>`<option value="${i}" ${row?.day==i?'selected':''}>${x}</option>`).join('')}</select></div><div><label>Aula</label><input class="field" name="room" value="${esc(row?.room||'')}"></div></div><div class="form-row"><div><label>Inicio</label><input class="field" type="time" name="start" required value="${esc(row?.start||'09:00')}"></div><div><label>Fin</label><input class="field" type="time" name="end" required value="${esc(row?.end||'11:00')}"></div></div><div class="modal-actions">${row?'<button type="button" class="btn danger" id="deleteClass">Eliminar</button>':''}<button type="button" class="btn" onclick="closeModal()">Cancelar</button><button class="btn primary">Guardar</button></div></form>`);
+  $('#subjectSelect')&&($('#subjectSelect').onchange=e=>$('#customSubject').classList.toggle('hidden',e.target.value!=='__custom'));
+  $('#classForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const selectedTitle=$('#subjectSelect')?.value;const title=(selectedTitle&&selectedTitle!=='__custom'?selectedTitle:$('#customSubject').value).trim();if(!title)return toast('Selecciona o escribe una asignatura');await NurseDB.put('schedule',{id:row?.id||uid(),title,day:+f.get('day'),room:f.get('room').trim(),start:f.get('start'),end:f.get('end')});closeModal();render();toast('Guardado')}; if(row)$('#deleteClass').onclick=async()=>{await NurseDB.remove('schedule',row.id);closeModal();render();toast('Eliminado')};
+}
 async function openExceptions(){const rows=(await NurseDB.all('exceptions')).sort((a,b)=>a.date.localeCompare(b.date));modal(`<div class="modal-head"><h2>Excepciones de calendario</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p class="small muted">Usa excepciones para festivos, exámenes, cambios puntuales o días sin clase.</p><div id="exceptionList" class="list">${rows.map(x=>`<div class="list-row"><div class="grow"><strong>${dateFmt(x.date)} · ${esc(x.title)}</strong><div class="sub">${esc(x.type||'Cambio puntual')}</div></div><button class="icon-btn" data-del-ex="${x.id}">×</button></div>`).join('')||noData('Sin excepciones')}</div><form id="exceptionForm"><div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="date" required></div><div><label>Tipo</label><select class="field" name="type"><option>Sin clase</option><option>Examen</option><option>Cambio de horario</option><option>Entrega</option><option>Otro</option></select></div></div><label>Descripción</label><input class="field" name="title" required><div class="modal-actions"><button class="btn primary">Añadir</button></div></form>`);$('#exceptionForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await NurseDB.put('exceptions',{id:uid(),date:f.get('date'),type:f.get('type'),title:f.get('title').trim()});closeModal();openExceptions()};$$('[data-del-ex]').forEach(b=>b.onclick=async()=>{await NurseDB.remove('exceptions',b.dataset.delEx);closeModal();openExceptions()})}
 async function openTasks(){const rows=(await NurseDB.all('tasks')).sort((a,b)=>(a.done-b.done)||((a.due||'9999').localeCompare(b.due||'9999')));modal(`<div class="modal-head"><h2>Pendientes</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="list">${rows.map(x=>`<label class="list-row"><input type="checkbox" data-task-check="${x.id}" ${x.done?'checked':''}><div class="grow"><strong>${esc(x.title)}</strong><div class="sub">${x.due?dateFmt(x.due):'Sin fecha'}${x.category?' · '+esc(x.category):''}</div></div><button type="button" class="icon-btn" data-del-task="${x.id}">×</button></label>`).join('')||noData('Nada pendiente')}</div><form id="taskForm"><label>Nuevo pendiente</label><input class="field" name="title" required placeholder="Ej. Entregar trabajo de Fundamentos"><div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="due"></div><div><label>Categoría</label><select class="field" name="category"><option>Universidad</option><option>Prácticum</option><option>Examen</option><option>Personal</option></select></div></div><div class="modal-actions"><button class="btn primary">Añadir</button></div></form>`);$$('[data-task-check]').forEach(c=>c.onchange=async()=>{const r=await NurseDB.get('tasks',c.dataset.taskCheck);r.done=c.checked;await NurseDB.put('tasks',r)});$$('[data-del-task]').forEach(b=>b.onclick=async()=>{await NurseDB.remove('tasks',b.dataset.delTask);closeModal();openTasks()});$('#taskForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await NurseDB.put('tasks',{id:uid(),title:f.get('title').trim(),due:f.get('due'),category:f.get('category'),done:false});closeModal();openTasks()}}
 async function openPAE(){const rows=await NurseDB.all('pae');modal(`<div class="modal-head"><h2>Espacio PAE</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="notice info">Puedes guardar tus propios diagnósticos, resultados e intervenciones o importar contenido para el que dispongas de licencia. La app no incluye una base NANDA-I/NIC/NOC propietaria.</div><div class="list" style="margin-top:12px">${rows.map(x=>`<div class="list-row"><span class="pill">${esc(x.type)}</span><div class="grow"><strong>${esc(x.code||'')} ${esc(x.title)}</strong><div class="sub">${esc(x.notes||'')}</div></div><button class="icon-btn" data-del-pae="${x.id}">×</button></div>`).join('')||noData('Aún no hay elementos')}</div><form id="paeForm"><div class="form-row"><div><label>Tipo</label><select class="field" name="type"><option>NANDA</option><option>NOC</option><option>NIC</option></select></div><div><label>Código</label><input class="field" name="code"></div></div><label>Título</label><input class="field" name="title" required><label>Notas</label><textarea class="field" name="notes"></textarea><div class="modal-actions"><button class="btn primary">Guardar</button></div></form>`);$('#paeForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await NurseDB.put('pae',{id:uid(),type:f.get('type'),code:f.get('code').trim(),title:f.get('title').trim(),notes:f.get('notes').trim()});closeModal();openPAE()};$$('[data-del-pae]').forEach(b=>b.onclick=async()=>{await NurseDB.remove('pae',b.dataset.delPae);closeModal();openPAE()})}
 
 async function renderPracticum(){
-  setTitle('Prácticum',state.settings.practicum);
-  const [cases,days]=await Promise.all([NurseDB.all('cases'),NurseDB.all('days')]); const exps=cases.flatMap(c=>c.procedures||[]); const distinct=new Set(exps.map(x=>x.id||x.name)).size; const attendance=days.filter(d=>d.attendanceOfficial).length;
-  $('#app').innerHTML=`<div class="card hero"><p class="small muted">${esc(state.settings.hospital)}${state.settings.service?' · '+esc(state.settings.service):''}</p><h2>${esc(state.settings.practicum)}</h2><p>${dateFmt(state.settings.periodStart)} → ${dateFmt(state.settings.periodEnd)} · ${esc(state.settings.shift)}</p><button class="btn secondary" id="pracSetup">Configurar</button></div>
-  <div class="metric-row"><div class="metric"><b>${cases.length}</b><span>casos</span></div><div class="metric"><b>${exps.length}</b><span>experiencias</span></div><div class="metric"><b>${distinct}</b><span>técnicas</span></div><div class="metric"><b>${attendance}</b><span>días UCVEvalúa</span></div></div>
-  <button class="btn primary block" id="registerDay" style="margin-top:12px">Registrar día / caso</button>
-  <div class="grid-2" style="margin-top:10px"><button class="quick" id="caseDiary"><span class="ico">▣</span><div><strong>Diario de casos</strong><small>Patología, procedimientos y aprendizaje</small></div></button><button class="quick" id="portfolio"><span class="ico">↗</span><div><strong>Procedimientos</strong><small>Portfolio por participación</small></div></button><button class="quick" id="tutoria"><span class="ico">◎</span><div><strong>Preparar tutoría</strong><small>Repaso basado en experiencia</small></div></button><button class="quick" id="memoria"><span class="ico">≡</span><div><strong>Memoria</strong><small>Resumen de evidencias y aprendizajes</small></div></button></div>
-  ${section('Últimos casos')}<div class="list">${cases.sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(caseRow).join('')||noData('Todavía no has registrado casos')}</div>
-  <div class="notice info">NurseFlow no sustituye UCVEvalúa. El registro oficial de asistencia, documentación y evaluación sigue realizándose en los sistemas de la UCV.</div>`;
-  $('#pracSetup').onclick=openPracticumSettings; $('#registerDay').onclick=openDayLog; $('#caseDiary').onclick=openCaseDiary; $('#portfolio').onclick=openPortfolio; $('#tutoria').onclick=openTutoria; $('#memoria').onclick=openMemoria; $$('[data-case]').forEach(b=>b.onclick=()=>openCaseDetail(b.dataset.case));
+  setTitle('Prácticum','Portfolio clínico');
+  if(!state.settings.hasPracticum){
+    $('#app').innerHTML=`<div class="card hero"><p class="small muted">Aún no configurado</p><h2>Prácticum</h2><p>Activa esta sección cuando tengas un centro o periodo de prácticas asignado.</p><div class="btn-row"><button class="btn secondary" id="configurePracticum">Configurar prácticas</button></div></div>${section('Mientras tanto')}<div class="grid-2"><button class="quick" id="browseBatea"><span class="ico">▤</span><div><strong>La Batea</strong><small>Repasa procedimientos</small></div></button><button class="quick" id="browseStudy"><span class="ico">◫</span><div><strong>Estudio</strong><small>Prepárate antes de empezar</small></div></button></div>${clinicalNotice()}`; $('#configurePracticum').onclick=openPracticumSettings; $('#browseBatea').onclick=()=>openBatea(); $('#browseStudy').onclick=()=>go('study'); return;
+  }
+  const [cases,days]=await Promise.all([NurseDB.all('cases'),NurseDB.all('days')]); const ordered=[...cases].sort((a,b)=>b.date.localeCompare(a.date)); const procedureCount=cases.reduce((n,c)=>n+(c.procedures?.length||0),0); const attendance=days.filter(d=>d.attendanceOfficial).length;
+  $('#app').innerHTML=`<div class="card hero"><p class="small muted">${esc(state.settings.hospital||'Centro por definir')}${state.settings.service?' · '+esc(state.settings.service):''}</p><h2>${esc(state.settings.practicum||'Prácticum')}</h2><p>${state.settings.periodStart?dateFmt(state.settings.periodStart):'Inicio por definir'}${state.settings.periodEnd?' → '+dateFmt(state.settings.periodEnd):''}${state.settings.shift?' · '+esc(state.settings.shift):''}</p><div class="btn-row"><button class="btn secondary" id="pracSettings">Editar</button><button class="btn secondary" id="addPracCase">Nuevo caso</button></div></div><div class="metric-row"><div class="metric"><b>${cases.length}</b><span>casos</span></div><div class="metric"><b>${procedureCount}</b><span>técnicas</span></div><div class="metric"><b>${attendance}</b><span>días registrados</span></div><div class="metric"><b>${new Set(cases.map(c=>c.diagnosis).filter(Boolean)).size}</b><span>patologías</span></div></div><div class="grid-2" style="margin-top:12px"><button class="quick" id="dayLog"><span class="ico">✓</span><div><strong>Registrar día</strong><small>Asistencia y aprendizaje</small></div></button><button class="quick" id="portfolio"><span class="ico">▤</span><div><strong>Procedimientos</strong><small>Portfolio por participación</small></div></button><button class="quick" id="tutoria"><span class="ico">◎</span><div><strong>Preparar tutoría</strong><small>Repasa tu experiencia</small></div></button><button class="quick" id="memoria"><span class="ico">★</span><div><strong>Memoria</strong><small>Casos y reflexiones marcadas</small></div></button></div>${section('Casos recientes','<button id="allCases">Ver diario</button>')}<div class="list">${ordered.slice(0,5).map(caseRow).join('')||noData('Todavía no hay casos','Registra únicamente información anonimizada.')}</div>${clinicalNotice()}`;
+  $('#pracSettings').onclick=openPracticumSettings; $('#addPracCase').onclick=openCaseForm; $('#dayLog').onclick=openDayLog; $('#portfolio').onclick=openPortfolio; $('#tutoria').onclick=openTutoria; $('#memoria').onclick=openMemoria; $('#allCases').onclick=openCaseDiary; $$('[data-case]').forEach(b=>b.onclick=()=>openCaseDetail(b.dataset.case));
 }
 function caseRow(c){return `<button class="list-row clickable" data-case="${c.id}"><div class="avatar">${new Date(c.date+'T12:00').getDate()}</div><div class="grow"><strong>${esc(c.diagnosis||'Caso sin diagnóstico')}</strong><div class="sub">${dateFmt(c.date)} · ${(c.procedures||[]).length} procedimientos</div></div>${c.starred?'<span class="pill amber">★ memoria</span>':''}<span class="chev">›</span></button>`}
-async function openPracticumSettings(){modal(`<div class="modal-head"><h2>Configurar Prácticum</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="pracForm"><label>Prácticum</label><input class="field" name="practicum" value="${esc(state.settings.practicum)}"><label>Centro</label><input class="field" name="hospital" value="${esc(state.settings.hospital)}"><label>Servicio / unidad</label><input class="field" name="service" value="${esc(state.settings.service)}"><div class="form-row"><div><label>Inicio</label><input class="field" type="date" name="start" value="${state.settings.periodStart}"></div><div><label>Fin</label><input class="field" type="date" name="end" value="${state.settings.periodEnd}"></div></div><label>Horario habitual</label><input class="field" name="shift" value="${esc(state.settings.shift)}"><div class="modal-actions"><button class="btn primary">Guardar</button></div></form>`);$('#pracForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);Object.assign(state.settings,{practicum:f.get('practicum').trim(),hospital:f.get('hospital').trim(),service:f.get('service').trim(),periodStart:f.get('start'),periodEnd:f.get('end'),shift:f.get('shift').trim()});await saveSettings();closeModal();render();toast('Prácticum actualizado')}}
-async function openDayLog(){const date=isoToday();const row=await NurseDB.get('days',date);modal(`<div class="modal-head"><h2>Registrar día</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="dayForm"><label>Fecha</label><input class="field" type="date" name="date" value="${date}" required><label class="check-row"><input type="checkbox" name="attendance" ${row?.attendanceOfficial?'checked':''}><span>He registrado la asistencia oficial en UCVEvalúa</span></label><label>Aprendizaje general del día</label><textarea class="field" name="learning" placeholder="Qué has aprendido, dudas, aspectos a revisar…">${esc(row?.learning||'')}</textarea><label>Estado del día</label><select class="field" name="mood"><option ${row?.mood==='Tranquilo'?'selected':''}>Tranquilo</option><option ${row?.mood==='Intenso'?'selected':''}>Intenso</option><option ${row?.mood==='Difícil'?'selected':''}>Difícil</option><option ${row?.mood==='Muy productivo'?'selected':''}>Muy productivo</option></select><div class="modal-actions"><button type="button" class="btn" id="addCaseFromDay">Añadir caso</button><button class="btn primary">Guardar día</button></div></form>`);$('#dayForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await NurseDB.put('days',{id:f.get('date'),date:f.get('date'),attendanceOfficial:f.get('attendance')==='on',learning:f.get('learning').trim(),mood:f.get('mood')});closeModal();render();toast('Día guardado')};$('#addCaseFromDay').onclick=()=>{closeModal();openCaseForm(date)}}
-async function openCaseForm(date=isoToday(),id=null){const row=id?await NurseDB.get('cases',id):null;const procedures=await NurseDB.all('procedures');modal(`<div class="modal-head"><h2>${row?'Editar':'Nuevo'} caso de aprendizaje</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="caseForm"><div class="notice info">No introduzcas nombre, iniciales, SIP, historia clínica, habitación, fecha de nacimiento, fotos ni otros datos identificativos del paciente.</div><div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="date" value="${row?.date||date}" required></div><div><label>Área</label><input class="field" name="area" value="${esc(row?.area||state.settings.service)}" placeholder="Ej. Medicina interna"></div></div><label>Patología / diagnóstico</label><div class="form-row"><input class="field" name="diagnosis" id="caseDiagnosis" value="${esc(row?.diagnosis||'')}" required><button type="button" class="btn" id="icdLookup">Buscar CIE-11</button></div><input type="hidden" name="icdCode" value="${esc(row?.icdCode||'')}"><div id="icdSelected" class="small muted">${row?.icdCode?`CIE-11: ${esc(row.icdCode)}`:''}</div><label>Contexto clínico anonimizado</label><textarea class="field" name="context" placeholder="Solo lo necesario para aprender, sin identificadores.">${esc(row?.context||'')}</textarea><label>Procedimientos asociados</label><div id="caseProcedures">${(row?.procedures||[]).map((p,i)=>procedureEditor(p,i,procedures)).join('')}</div><button type="button" class="btn secondary" id="addProcedure">＋ Añadir procedimiento</button><label>Medicamentos relacionados (opcional)</label><input class="field" name="meds" value="${esc((row?.meds||[]).join(', '))}" placeholder="Ej. furosemida, paracetamol"><label>¿Qué he aprendido?</label><textarea class="field" name="learning">${esc(row?.learning||'')}</textarea><label>¿Qué quiero revisar?</label><textarea class="field" name="review">${esc(row?.review||'')}</textarea><label class="check-row"><input type="checkbox" name="starred" ${row?.starred?'checked':''}><span>Marcar como relevante para la memoria</span></label><div class="modal-actions">${row?'<button type="button" class="btn danger" id="deleteCase">Eliminar</button>':''}<button class="btn primary">Guardar caso</button></div></form>`);let n=(row?.procedures||[]).length;$('#addProcedure').onclick=()=>{$('#caseProcedures').insertAdjacentHTML('beforeend',procedureEditor(null,n++,procedures))};$('#icdLookup').onclick=()=>openICDLookup($('#caseDiagnosis').value,sel=>{document.querySelector('[name="diagnosis"]').value=sel.title;document.querySelector('[name="icdCode"]').value=sel.code||'';$('#icdSelected').textContent=sel.code?`CIE-11: ${sel.code}`:''});$('#caseForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const ps=[...e.target.querySelectorAll('[data-proc-row]')].map(r=>({id:r.querySelector('[name="procId"]').value,name:r.querySelector('[name="procId"] option:checked')?.textContent||'',participation:r.querySelector('[name="participation"]').value})).filter(x=>x.id);await NurseDB.put('cases',{id:row?.id||uid(),date:f.get('date'),area:f.get('area').trim(),diagnosis:f.get('diagnosis').trim(),icdCode:f.get('icdCode').trim(),context:f.get('context').trim(),procedures:ps,meds:f.get('meds').split(',').map(x=>x.trim()).filter(Boolean),learning:f.get('learning').trim(),review:f.get('review').trim(),starred:f.get('starred')==='on',updatedAt:new Date().toISOString()});closeModal();render();toast('Caso guardado')};if(row)$('#deleteCase').onclick=async()=>{if(confirm('¿Eliminar este caso?')){await NurseDB.remove('cases',row.id);closeModal();render();toast('Caso eliminado')}}}
+async function openPracticumSettings(){
+  modal(`<div class="modal-head"><h2>Configurar prácticas</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="pracForm"><label class="switch-row"><span><strong>Tengo prácticas asignadas</strong><span class="sub">Puedes desactivarlo al terminar el periodo.</span></span><span class="switch"><input id="hasPracticumSwitch" type="checkbox" ${state.settings.hasPracticum?'checked':''}><span class="slider"></span></span></label><div id="pracFields" class="${state.settings.hasPracticum?'':'hidden'}"><label>Prácticum</label><input class="field" name="practicum" value="${esc(state.settings.practicum)}" placeholder="Ej. Prácticum II"><label>Centro</label><input class="field" name="hospital" value="${esc(state.settings.hospital)}" placeholder="Hospital, centro de salud…"><label>Servicio / unidad</label><input class="field" name="service" value="${esc(state.settings.service)}" placeholder="Opcional"><div class="form-row"><div><label>Inicio</label><input class="field" type="date" name="start" value="${state.settings.periodStart||''}"></div><div><label>Fin</label><input class="field" type="date" name="end" value="${state.settings.periodEnd||''}"></div></div><label>Horario habitual</label><input class="field" name="shift" value="${esc(state.settings.shift)}" placeholder="Ej. 15:00–22:00"></div><div class="modal-actions"><button class="btn primary">Guardar</button></div></form>`); $('#hasPracticumSwitch').onchange=e=>$('#pracFields').classList.toggle('hidden',!e.target.checked); $('#pracForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),has=$('#hasPracticumSwitch').checked;Object.assign(state.settings,{hasPracticum:has,practicum:has?f.get('practicum').trim():'',hospital:has?f.get('hospital').trim():'',service:has?f.get('service').trim():'',periodStart:has?f.get('start'):'',periodEnd:has?f.get('end'):'',shift:has?f.get('shift').trim():''});await saveSettings();closeModal();render();toast('Prácticas actualizadas')};
+}
+async function openDayLog(){if(!state.settings.hasPracticum)return openPracticumSettings();const date=isoToday();const row=await NurseDB.get('days',date);modal(`<div class="modal-head"><h2>Registrar día</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="dayForm"><label>Fecha</label><input class="field" type="date" name="date" value="${date}" required><label class="check-row"><input type="checkbox" name="attendance" ${row?.attendanceOfficial?'checked':''}><span>He registrado la asistencia oficial en ${state.settings.university==='UCV'?'UCVEvalúa':'la plataforma de mi universidad'}</span></label><label>Aprendizaje general del día</label><textarea class="field" name="learning" placeholder="Qué has aprendido, dudas, aspectos a revisar…">${esc(row?.learning||'')}</textarea><label>Estado del día</label><select class="field" name="mood"><option ${row?.mood==='Tranquilo'?'selected':''}>Tranquilo</option><option ${row?.mood==='Intenso'?'selected':''}>Intenso</option><option ${row?.mood==='Difícil'?'selected':''}>Difícil</option><option ${row?.mood==='Muy productivo'?'selected':''}>Muy productivo</option></select><div class="modal-actions"><button type="button" class="btn" id="addCaseFromDay">Añadir caso</button><button class="btn primary">Guardar día</button></div></form>`);$('#dayForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);await NurseDB.put('days',{id:f.get('date'),date:f.get('date'),attendanceOfficial:f.get('attendance')==='on',learning:f.get('learning').trim(),mood:f.get('mood')});closeModal();render();toast('Día guardado')};$('#addCaseFromDay').onclick=()=>{closeModal();openCaseForm(date)}}
+async function openCaseForm(date=isoToday(),id=null){if(!state.settings.hasPracticum)return openPracticumSettings();const row=id?await NurseDB.get('cases',id):null;const procedures=await NurseDB.all('procedures');modal(`<div class="modal-head"><h2>${row?'Editar':'Nuevo'} caso de aprendizaje</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="caseForm"><div class="notice info">No introduzcas nombre, iniciales, SIP, historia clínica, habitación, fecha de nacimiento, fotos ni otros datos identificativos del paciente.</div><div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="date" value="${row?.date||date}" required></div><div><label>Área</label><input class="field" name="area" value="${esc(row?.area||state.settings.service)}" placeholder="Ej. Medicina interna"></div></div><label>Patología / diagnóstico</label><div class="form-row"><input class="field" name="diagnosis" id="caseDiagnosis" value="${esc(row?.diagnosis||'')}" required><button type="button" class="btn" id="icdLookup">Buscar CIE-11</button></div><input type="hidden" name="icdCode" value="${esc(row?.icdCode||'')}"><div id="icdSelected" class="small muted">${row?.icdCode?`CIE-11: ${esc(row.icdCode)}`:''}</div><label>Contexto clínico anonimizado</label><textarea class="field" name="context" placeholder="Solo lo necesario para aprender, sin identificadores.">${esc(row?.context||'')}</textarea><label>Procedimientos asociados</label><div id="caseProcedures">${(row?.procedures||[]).map((p,i)=>procedureEditor(p,i,procedures)).join('')}</div><button type="button" class="btn secondary" id="addProcedure">＋ Añadir procedimiento</button><label>Medicamentos relacionados (opcional)</label><input class="field" name="meds" value="${esc((row?.meds||[]).join(', '))}" placeholder="Ej. furosemida, paracetamol"><label>¿Qué he aprendido?</label><textarea class="field" name="learning">${esc(row?.learning||'')}</textarea><label>¿Qué quiero revisar?</label><textarea class="field" name="review">${esc(row?.review||'')}</textarea><label class="check-row"><input type="checkbox" name="starred" ${row?.starred?'checked':''}><span>Marcar como relevante para la memoria</span></label><div class="modal-actions">${row?'<button type="button" class="btn danger" id="deleteCase">Eliminar</button>':''}<button class="btn primary">Guardar caso</button></div></form>`);let n=(row?.procedures||[]).length;$('#addProcedure').onclick=()=>{$('#caseProcedures').insertAdjacentHTML('beforeend',procedureEditor(null,n++,procedures))};$('#icdLookup').onclick=()=>openICDLookup($('#caseDiagnosis').value,sel=>{document.querySelector('[name="diagnosis"]').value=sel.title;document.querySelector('[name="icdCode"]').value=sel.code||'';$('#icdSelected').textContent=sel.code?`CIE-11: ${sel.code}`:''});$('#caseForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);const ps=[...e.target.querySelectorAll('[data-proc-row]')].map(r=>({id:r.querySelector('[name="procId"]').value,name:r.querySelector('[name="procId"] option:checked')?.textContent||'',participation:r.querySelector('[name="participation"]').value})).filter(x=>x.id);await NurseDB.put('cases',{id:row?.id||uid(),date:f.get('date'),area:f.get('area').trim(),diagnosis:f.get('diagnosis').trim(),icdCode:f.get('icdCode').trim(),context:f.get('context').trim(),procedures:ps,meds:f.get('meds').split(',').map(x=>x.trim()).filter(Boolean),learning:f.get('learning').trim(),review:f.get('review').trim(),starred:f.get('starred')==='on',updatedAt:new Date().toISOString()});closeModal();render();toast('Caso guardado')};if(row)$('#deleteCase').onclick=async()=>{if(confirm('¿Eliminar este caso?')){await NurseDB.remove('cases',row.id);closeModal();render();toast('Caso eliminado')}}}
 function procedureEditor(p,i,procedures){return `<div class="form-row" data-proc-row style="margin-bottom:8px"><select class="field" name="procId"><option value="">Selecciona técnica</option>${procedures.map(x=>`<option value="${x.id}" ${p?.id===x.id?'selected':''}>${esc(x.name)}</option>`).join('')}</select><select class="field" name="participation"><option ${p?.participation==='Observado'?'selected':''}>Observado</option><option ${p?.participation==='Ayudado'?'selected':''}>Ayudado</option><option ${p?.participation==='Realizado con supervisión'?'selected':''}>Realizado con supervisión</option><option ${p?.participation==='Realizado por mí'?'selected':''}>Realizado por mí</option><option ${p?.participation==='Realizado por otro profesional'?'selected':''}>Realizado por otro profesional</option></select></div>`}
 async function openCaseDiary(){const rows=(await NurseDB.all('cases')).sort((a,b)=>b.date.localeCompare(a.date));modal(`<div class="modal-head"><h2>Diario de casos</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="list">${rows.map(caseRow).join('')||noData('Sin casos')}</div><div class="modal-actions"><button class="btn primary" id="newCaseDiary">Nuevo caso</button></div>`);$$('[data-case]').forEach(b=>b.onclick=()=>{closeModal();openCaseDetail(b.dataset.case)});$('#newCaseDiary').onclick=()=>{closeModal();openCaseForm()}}
 async function openCaseDetail(id){const c=await NurseDB.get('cases',id);if(!c)return;modal(`<div class="modal-head"><h2>${esc(c.diagnosis)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p class="small muted">${dateFmt(c.date)}${c.area?' · '+esc(c.area):''}${c.icdCode?' · CIE-11 '+esc(c.icdCode):''}</p>${c.context?`<h3>Contexto</h3><p>${esc(c.context)}</p>`:''}<h3>Procedimientos</h3><div class="list">${(c.procedures||[]).map(p=>`<div class="list-row"><div class="grow"><strong>${esc(p.name)}</strong><div class="sub">${esc(p.participation)}</div></div></div>`).join('')||noData('Ninguno')}</div>${c.meds?.length?`<h3>Medicamentos relacionados</h3><div class="tag-cloud">${c.meds.map(m=>`<span class="tag">${esc(m)}</span>`).join('')}</div>`:''}${c.learning?`<h3>Aprendizaje</h3><p>${esc(c.learning)}</p>`:''}${c.review?`<h3>Para revisar</h3><p>${esc(c.review)}</p>`:''}<div class="modal-actions"><button class="btn" id="editCase">Editar</button></div>`);$('#editCase').onclick=()=>{closeModal();openCaseForm(c.date,c.id)}}
@@ -143,309 +229,28 @@ async function renderConsult(){
   $('#app').innerHTML=`<div class="grid-2"><button class="quick" id="medsBtn"><span class="ico">Rx</span><div><strong>Medicamentos</strong><small>${meds.length} guardados offline</small></div></button><button class="quick" id="scanBtn"><span class="ico">▣</span><div><strong>Escáner</strong><small>Código de medicamento</small></div></button><button class="quick" id="bateaBtn"><span class="ico">▤</span><div><strong>La Batea</strong><small>30 técnicas editables</small></div></button><button class="quick" id="calcBtn"><span class="ico">÷</span><div><strong>Calculadoras</strong><small>Ritmos, dosis, balance…</small></div></button><button class="quick" id="scalesBtn"><span class="ico">◎</span><div><strong>Escalas</strong><small>Glasgow, Barthel, Norton, Braden</small></div></button><button class="quick" id="labsBtn"><span class="ico">↕</span><div><strong>Analíticas</strong><small>Referencias orientativas</small></div></button><button class="quick" id="dictBtn"><span class="ico">A↔</span><div><strong>Diccionario</strong><small>Jerga y abreviaturas</small></div></button><button class="quick" id="icdBtn"><span class="ico">CIE</span><div><strong>CIE-11</strong><small>OMS + caché local</small></div></button></div>${clinicalNotice()}`;
   $('#medsBtn').onclick=openMedSearch;$('#scanBtn').onclick=openScanner;$('#bateaBtn').onclick=openBatea;$('#calcBtn').onclick=openCalculators;$('#scalesBtn').onclick=openScales;$('#labsBtn').onclick=openLabs;$('#dictBtn').onclick=openDictionary;$('#icdBtn').onclick=()=>openICDLookup('');
 }
-async function openMedSearch(){const local=await NurseDB.all('meds');modal(`<div class="modal-head"><h2>Medicamentos</h2><button class="icon-btn" onclick="closeModal()">×</button></div><label>Buscar por nombre o principio activo</label><div class="form-row"><input class="field" id="medQuery" placeholder="Ej. paracetamol"><button class="btn primary" id="medSearchBtn">Buscar</button></div><div id="medResults" style="margin-top:12px">${local.length?`<div class="subhead">Botiquín local</div><div class="list">${local.slice(0,10).map(m=>medRow(m,true)).join('')}</div>`:noData('Sin medicamentos guardados','Haz una búsqueda online y guarda los que necesites.')}</div>${clinicalNotice()}`);$('#medSearchBtn').onclick=()=>searchCIMA($('#medQuery').value);$('#medQuery').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchCIMA(e.currentTarget.value)}};$$('[data-med-local]').forEach(b=>b.onclick=()=>openMedDetail(b.dataset.medLocal))}
-function medRow(m,local=false){return `<button class="list-row clickable" ${local?`data-med-local="${m.id}"`:`data-med-json='${esc(JSON.stringify(m))}'`}><div class="avatar">Rx</div><div class="grow"><strong>${esc(m.name||m.nombre||'Medicamento')}</strong><div class="sub">${esc(m.cn||m.nregistro||m.registration||'')}</div></div><span class="chev">›</span></button>`}
-/**
- * Extracts the active ingredient information returned by CIMA.
- *
- * CIMA responses may differ slightly between search and detail endpoints.
- * This helper normalises the supported structures so that the UI does not
- * depend on a single property name or response shape.
- *
- * @param {object|null|undefined} medicine Raw CIMA medicine object.
- * @returns {string} Human-readable active ingredient description.
- */
-function extractActiveIngredients(medicine) {
-  if (!medicine) return '';
-
-  if (Array.isArray(medicine.principiosActivos) && medicine.principiosActivos.length) {
-    return medicine.principiosActivos
-      .map(item => {
-        if (!item) return '';
-        if (typeof item === 'string') return item.trim();
-
-        const name = item.nombre || item.principioActivo || item.descripcion || '';
-        const amount = item.cantidad ?? '';
-        const unit = item.unidad || item.unidadMedida || '';
-
-        return [name, amount, unit]
-          .filter(value => value !== '' && value !== null && value !== undefined)
-          .join(' ')
-          .trim();
-      })
-      .filter(Boolean)
-      .join(', ');
-  }
-
-  if (typeof medicine.pactivos === 'string' && medicine.pactivos.trim()) {
-    return medicine.pactivos.trim();
-  }
-
-  if (Array.isArray(medicine.pactivos)) {
-    return medicine.pactivos
-      .map(item => {
-        if (!item) return '';
-        if (typeof item === 'string') return item.trim();
-        return item.nombre || item.principioActivo || item.descripcion || '';
-      })
-      .filter(Boolean)
-      .join(', ');
-  }
-
-  if (typeof medicine.principioActivo === 'string') {
-    return medicine.principioActivo.trim();
-  }
-
-  return '';
+/** Medication search and nursing-oriented CIMA rendering. */
+async function openMedSearch(){
+  const local=await NurseDB.all('meds');
+  modal(`<div class="modal-head"><h2>Medicamentos</h2><button class="icon-btn" onclick="closeModal()">×</button></div><label>Buscar por nombre o principio activo</label><div class="form-row"><input class="field" id="medQuery" placeholder="Ej. vancomicina"><button class="btn primary" id="medSearchBtn">Buscar</button></div><div id="medResults" style="margin-top:12px">${local.length?`<div class="subhead">Botiquín local</div><div class="list">${local.slice(0,10).map(m=>medRow(m,true)).join('')}</div>`:noData('Sin medicamentos guardados','Busca en CIMA y guarda las fichas que quieras consultar offline.')}</div>${clinicalNotice()}`);
+  $('#medSearchBtn').onclick=()=>searchCIMA($('#medQuery').value); $('#medQuery').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();searchCIMA(e.currentTarget.value)}}; $$('[data-med-local]').forEach(b=>b.onclick=()=>openMedDetail(b.dataset.medLocal));
 }
-
-/**
- * Searches CIMA by commercial name and active ingredient.
- *
- * Search results are intentionally treated as summaries. When a user opens a
- * result, NurseFlow performs a second request to the detail endpoint so the
- * medicine card is built from the authoritative full CIMA record.
- *
- * @param {string} q User-entered search query.
- */
-async function searchCIMA(q) {
-  q = String(q || '').trim();
-  if (!q) return toast('Escribe un medicamento');
-
-  const box = $('#medResults');
-  box.innerHTML = '<div class="empty">Buscando en CIMA…</div>';
-
-  try {
-    let results = [];
-
-    if (state.settings.icdWorker && state.settings.apiMode === 'worker') {
-      const response = await fetch(
-        `${state.settings.icdWorker.replace(/\/$/, '')}/cima?query=${encodeURIComponent(q)}`
-      );
-
-      if (!response.ok) throw new Error(`Worker CIMA search ${response.status}`);
-
-      const data = await response.json();
-      results = Array.isArray(data) ? data : (data.resultados || data.results || []);
-    } else {
-      const urls = [
-        `https://cima.aemps.es/cima/rest/medicamentos?nombre=${encodeURIComponent(q)}`,
-        `https://cima.aemps.es/cima/rest/medicamentos?practiv1=${encodeURIComponent(q)}`
-      ];
-
-      const responses = await Promise.all(
-        urls.map(url =>
-          fetch(url)
-            .then(response => response.ok ? response.json() : [])
-            .catch(() => [])
-        )
-      );
-
-      const merged = responses.flatMap(data =>
-        Array.isArray(data) ? data : (data.resultados || data.results || [])
-      );
-
-      // CIMA can return the same medicine from both queries. De-duplicate it
-      // before rendering the result list.
-      const seen = new Set();
-      results = merged.filter(item => {
-        const key = item.nregistro || item.cn || item.nombre;
-        if (!key || seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
-    }
-
-    box.innerHTML = `
-      <div class="list">
-        ${results.slice(0, 20).map(item => {
-          const active = extractActiveIngredients(item);
-          const medicine = {
-            id: String(item.nregistro || item.cn || uid()),
-            name: item.nombre || active || 'Medicamento',
-            registration: item.nregistro || '',
-            active,
-            raw: item
-          };
-
-          return medRow(medicine, false);
-        }).join('') || noData('Sin resultados')}
-      </div>
-    `;
-
-    $$('[data-med-json]').forEach(button => {
-      button.onclick = () => openMedRemote(JSON.parse(button.dataset.medJson));
-    });
-  } catch (error) {
-    console.error('CIMA search failed:', error);
-    box.innerHTML = `
-      <div class="notice">
-        No se pudo consultar CIMA desde este navegador. Comprueba la conexión
-        o configura el Worker en Ajustes. Tu botiquín local sigue disponible offline.
-      </div>
-    `;
-  }
+function normaliseCimaList(data){return Array.isArray(data)?data:(data?.resultados||data?.results||[])}
+function activeText(m){if(Array.isArray(m?.principiosActivos)&&m.principiosActivos.length)return m.principiosActivos.map(p=>[p.nombre,p.cantidad,p.unidad].filter(Boolean).join(' ')).join(', ');if(typeof m?.pactivos==='string')return m.pactivos;return ''}
+function stripClinicalHtml(html){if(!html)return '';const doc=new DOMParser().parseFromString(String(html),'text/html');doc.querySelectorAll('script,style').forEach(x=>x.remove());return(doc.body.textContent||'').replace(/\s+/g,' ').trim()}
+async function cimaFetch(path){const worker=state.settings.icdWorker?.replace(/\/$/,'');if(state.settings.apiMode==='worker'&&worker){const r=await fetch(`${worker}${path}`);if(!r.ok)throw new Error(`Worker ${r.status}`);return r.json()}const directPath=path.replace(/^\/cima/,'');const r=await fetch(`https://cima.aemps.es/cima/rest${directPath}`);if(!r.ok)throw new Error(`CIMA ${r.status}`);return r.json()}
+async function searchCIMA(q){q=q.trim();if(!q)return toast('Escribe un medicamento');const box=$('#medResults');box.innerHTML='<div class="empty">Buscando en CIMA…</div>';try{let arr=[];if(state.settings.apiMode==='worker'&&state.settings.icdWorker){arr=normaliseCimaList(await cimaFetch(`/cima/search?q=${encodeURIComponent(q)}`))}else{const [byName,byActive]=await Promise.all([cimaFetch(`/medicamentos?nombre=${encodeURIComponent(q)}&autorizados=1`).catch(()=>[]),cimaFetch(`/medicamentos?practiv1=${encodeURIComponent(q)}&autorizados=1`).catch(()=>[])]);const seen=new Set();arr=[...normaliseCimaList(byName),...normaliseCimaList(byActive)].filter(x=>{const k=x.nregistro||x.nombre;if(seen.has(k))return false;seen.add(k);return true})}box.innerHTML=`<div class="list">${arr.slice(0,30).map(x=>medRow({id:String(x.nregistro||uid()),name:x.nombre||'Medicamento',registration:x.nregistro||'',active:x.pactivos||'',raw:x},false)).join('')||noData('Sin resultados')}</div>`;$$('[data-med-json]').forEach(b=>b.onclick=()=>openMedRemote(JSON.parse(b.dataset.medJson)))}catch(e){box.innerHTML='<div class="notice">No se pudo consultar CIMA. Comprueba la conexión o configura el Worker en Ajustes.</div>'}}
+async function getCimaClinicalBundle(nregistro){if(!nregistro)throw new Error('Número de registro ausente');if(state.settings.apiMode==='worker'&&state.settings.icdWorker)return cimaFetch(`/cima/clinical?nregistro=${encodeURIComponent(nregistro)}`);const [medicine,sections,notes,materials]=await Promise.all([cimaFetch(`/medicamento?nregistro=${encodeURIComponent(nregistro)}`),cimaFetch(`/docSegmentado/contenido/1?nregistro=${encodeURIComponent(nregistro)}`).catch(()=>[]),cimaFetch(`/notas?nregistro=${encodeURIComponent(nregistro)}`).catch(()=>[]),cimaFetch(`/materiales?nregistro=${encodeURIComponent(nregistro)}`).catch(()=>[])]);const supply=(await Promise.all((medicine?.presentaciones||[]).filter(p=>p.cn&&p.psum).map(p=>cimaFetch(`/psuministro/${encodeURIComponent(p.cn)}`).then(r=>normaliseCimaList(r).map(x=>({...x,presentationName:p.nombre||x.nombre||'',cn:p.cn}))).catch(()=>[])))).flat();return{medicine,sections:normaliseCimaList(sections),notes:normaliseCimaList(notes),materials:normaliseCimaList(materials),supply,source:'CIMA/AEMPS'}}
+function findFtSection(sections,prefix){const row=(sections||[]).find(s=>String(s.seccion||'')===prefix)||(sections||[]).find(s=>String(s.seccion||'').startsWith(prefix+'.'));return row?stripClinicalHtml(row.contenido):''}
+function clinicalBlock(title,text,priority='normal'){return `<section class="med-clinical ${priority}"><h3>${esc(title)}</h3>${text?`<p>${esc(text)}</p>`:'<p class="muted">No consta información específica en esta sección de la ficha técnica.</p>'}</section>`}
+function supplySummary(m){const presentations=m?.presentaciones||[];if(!presentations.length)return m?.psum?'CIMA indica un problema de suministro abierto.':'Sin información de presentaciones en la respuesta.';const commercial=presentations.filter(p=>p.comerc).length,supply=presentations.filter(p=>p.psum).length;return `${commercial} presentación(es) comercializada(s)${supply?` · ${supply} con problema de suministro abierto`:''}`}
+async function openMedRemote(m){
+  modal(`<div class="modal-head"><h2>${esc(m.name)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="empty">Cargando ficha técnica oficial…</div>`);
+  try{const bundle=await getCimaClinicalBundle(m.registration),d=bundle.medicine||m.raw||{},sections=bundle.sections||[],active=activeText(d)||m.active||'',routes=(d.viasAdministracion||[]).map(v=>v.nombre).filter(Boolean).join(', '),form=d.formaFarmaceutica?.nombre||d.formaFarmaceuticaSimplificada?.nombre||'',atc=(d.atcs||[]).map(a=>`${a.codigo||''} ${a.nombre||''}`.trim()).join(', ');const info={indications:findFtSection(sections,'4.1'),posology:findFtSection(sections,'4.2'),contraindications:findFtSection(sections,'4.3'),warnings:findFtSection(sections,'4.4'),interactions:findFtSection(sections,'4.5'),pregnancy:findFtSection(sections,'4.6'),adverse:findFtSection(sections,'4.8'),overdose:findFtSection(sections,'4.9'),incompatibilities:findFtSection(sections,'6.2'),shelfLife:findFtSection(sections,'6.3'),storage:findFtSection(sections,'6.4'),handling:findFtSection(sections,'6.6')};const safetyNotes=(bundle.notes||[]).map(n=>({subject:n.asunto||n.ref||'Nota de seguridad',date:n.fecha,url:n.url}));const officialUrl=`https://cima.aemps.es/cima/dochtml/ft/${encodeURIComponent(m.registration)}/FichaTecnica.html`;const cacheRecord={id:String(m.registration),name:d.nombre||m.name,registration:m.registration,active,raw:d,clinical:info,sections,safetyNotes,materials:bundle.materials||[],savedAt:new Date().toISOString()};
+    modal(`<div class="modal-head"><h2>${esc(d.nombre||m.name)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="med-summary-grid"><div><span>Principio activo</span><strong>${esc(active||'No disponible')}</strong></div><div><span>Dosis</span><strong>${esc(d.dosis||'No disponible')}</strong></div><div><span>Forma</span><strong>${esc(form||'No disponible')}</strong></div><div><span>Vía</span><strong>${esc(routes||'No disponible')}</strong></div></div><div class="source-card"><strong>CIMA / AEMPS</strong><br>Registro ${esc(m.registration)}${atc?` · ATC ${esc(atc)}`:''}${d.cpresc?`<br>${esc(d.cpresc)}`:''}<br>${esc(supplySummary(d))}</div>${d.triangulo?'<div class="notice">▼ Medicamento sujeto a seguimiento adicional (triángulo negro).</div>':''}${safetyNotes.length?`<div class="notice"><strong>${safetyNotes.length} nota(s) de seguridad AEMPS asociada(s).</strong><div class="safety-links">${safetyNotes.map(n=>n.url?`<a href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.subject)}</a>`:`<span>${esc(n.subject)}</span>`).join('')}</div></div>`:''}${(bundle.materials||[]).length?`<div class="notice info"><strong>Materiales informativos de seguridad disponibles en AEMPS.</strong></div>`:''}${(bundle.supply||[]).length?`<div class="notice"><strong>Problemas de suministro activos</strong>${bundle.supply.map(x=>`<div class="small">${esc(x.presentationName||x.nombre||x.cn)}${x.observ?` · ${esc(x.observ)}`:''}</div>`).join('')}</div>`:''}<h3 class="med-section-title">Administración segura</h3>${clinicalBlock('Indicaciones terapéuticas · FT 4.1',info.indications)}${clinicalBlock('Posología y forma de administración · FT 4.2',info.posology,'critical')}${clinicalBlock('Incompatibilidades · FT 6.2',info.incompatibilities,'critical')}${clinicalBlock('Manipulación, preparación y eliminación · FT 6.6',info.handling,'critical')}${clinicalBlock('Contraindicaciones · FT 4.3',info.contraindications,'critical')}${clinicalBlock('Advertencias y precauciones · FT 4.4',info.warnings)}${clinicalBlock('Interacciones · FT 4.5',info.interactions)}${clinicalBlock('Reacciones adversas · FT 4.8',info.adverse)}${clinicalBlock('Sobredosis · FT 4.9',info.overdose)}<h3 class="med-section-title">Conservación</h3>${clinicalBlock('Periodo de validez · FT 6.3',info.shelfLife)}${clinicalBlock('Condiciones de conservación · FT 6.4',info.storage)}${info.pregnancy?clinicalBlock('Embarazo, lactancia y fertilidad · FT 4.6',info.pregnancy):''}<div class="notice info">Esta vista reorganiza texto oficial de la ficha técnica para consulta rápida. No añade dosis, diluciones ni compatibilidades que CIMA no indique y no sustituye la prescripción ni el protocolo vigente del centro.</div><div class="modal-actions"><a class="btn" href="${officialUrl}" target="_blank" rel="noopener">Ficha técnica oficial</a><button class="btn primary" id="saveMed">Guardar offline</button></div>`); $('#saveMed').onclick=async()=>{await NurseDB.put('meds',cacheRecord);toast('Ficha guardada para consulta offline');closeModal()};
+  }catch(e){modal(`<div class="modal-head"><h2>${esc(m.name)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="notice">No se pudo cargar la ficha técnica segmentada de CIMA. ${esc(e.message||'')}</div>`)}
 }
-
-/**
- * Retrieves the complete CIMA record for a medicine registration number.
- *
- * The request can be made directly from the PWA or through the configured
- * Cloudflare Worker. Keeping both paths makes NurseFlow usable in environments
- * where browser CORS restrictions prevent direct access to CIMA.
- *
- * @param {string} registrationNumber CIMA registration number (nregistro).
- * @returns {Promise<object>} Full CIMA medicine record.
- */
-async function getCimaMedicineDetail(registrationNumber) {
-  const nregistro = String(registrationNumber || '').trim();
-  if (!nregistro) throw new Error('CIMA registration number is required');
-
-  if (state.settings.icdWorker && state.settings.apiMode === 'worker') {
-    const response = await fetch(
-      `${state.settings.icdWorker.replace(/\/$/, '')}/cima/detail?nregistro=${encodeURIComponent(nregistro)}`
-    );
-
-    if (!response.ok) {
-      throw new Error(`Worker CIMA detail ${response.status}`);
-    }
-
-    return response.json();
-  }
-
-  const response = await fetch(
-    `https://cima.aemps.es/cima/rest/medicamento?nregistro=${encodeURIComponent(nregistro)}`
-  );
-
-  if (!response.ok) {
-    throw new Error(`CIMA detail ${response.status}`);
-  }
-
-  return response.json();
-}
-
-/**
- * Opens a medicine result and upgrades the search summary with the full CIMA
- * record before rendering it. This fixes the previous behaviour where the
- * modal displayed only the registration number and a generic fallback for the
- * active ingredient.
- *
- * @param {object} medicine Search-result model created by searchCIMA().
- */
-async function openMedRemote(medicine) {
-  modal(`
-    <div class="modal-head">
-      <h2>${esc(medicine.name)}</h2>
-      <button class="icon-btn" onclick="closeModal()">×</button>
-    </div>
-    <div class="empty">Cargando ficha oficial de CIMA…</div>
-  `);
-
-  try {
-    const detail = await getCimaMedicineDetail(medicine.registration);
-    const active = extractActiveIngredients(detail) || medicine.active || '';
-
-    const routes = Array.isArray(detail?.viasAdministracion)
-      ? detail.viasAdministracion
-          .map(route => route?.nombre || route?.descripcion || '')
-          .filter(Boolean)
-          .join(', ')
-      : '';
-
-    const pharmaceuticalForm =
-      detail?.formaFarmaceutica?.nombre ||
-      detail?.formaFarmaceuticaSimplificada?.nombre ||
-      '';
-
-    const laboratory =
-      detail?.labtitular ||
-      detail?.laboratorioTitular ||
-      detail?.titular ||
-      '';
-
-    const name = detail?.nombre || medicine.name;
-
-    // Keep the in-memory object complete so an offline save contains the
-    // detailed record rather than only the original search result.
-    medicine.name = name;
-    medicine.active = active;
-    medicine.raw = detail || medicine.raw;
-
-    modal(`
-      <div class="modal-head">
-        <h2>${esc(name)}</h2>
-        <button class="icon-btn" onclick="closeModal()">×</button>
-      </div>
-
-      <p class="small muted">Registro: ${esc(medicine.registration || '—')}</p>
-      <div class="source-card">Fuente oficial: CIMA / AEMPS.</div>
-
-      <h3>Principio(s) activo(s)</h3>
-      <p>${esc(active || 'No disponible en la respuesta estructurada de CIMA.')}</p>
-
-      ${pharmaceuticalForm ? `
-        <h3>Forma farmacéutica</h3>
-        <p>${esc(pharmaceuticalForm)}</p>
-      ` : ''}
-
-      ${routes ? `
-        <h3>Vía(s) de administración</h3>
-        <p>${esc(routes)}</p>
-      ` : ''}
-
-      ${laboratory ? `
-        <h3>Laboratorio titular</h3>
-        <p>${esc(laboratory)}</p>
-      ` : ''}
-
-      <div class="notice info">
-        Para diluciones, velocidades de administración, incompatibilidades y
-        otras instrucciones clínicas, consulta la ficha técnica oficial vigente.
-      </div>
-
-      <div class="modal-actions">
-        <button class="btn primary" id="saveMed">Guardar offline</button>
-      </div>
-    `);
-
-    $('#saveMed').onclick = async () => {
-      await NurseDB.put('meds', {
-        id: medicine.id,
-        name,
-        registration: medicine.registration,
-        active,
-        raw: detail,
-        savedAt: new Date().toISOString()
-      });
-
-      toast('Guardado en botiquín local');
-      closeModal();
-    };
-  } catch (error) {
-    console.error('CIMA detail failed:', error);
-
-    // If the detail endpoint is temporarily unavailable, keep the user inside
-    // the medicine flow and show every piece of information that was present in
-    // the original search response.
-    modal(`
-      <div class="modal-head">
-        <h2>${esc(medicine.name)}</h2>
-        <button class="icon-btn" onclick="closeModal()">×</button>
-      </div>
-
-      <p class="small muted">Registro: ${esc(medicine.registration || '—')}</p>
-      <div class="source-card">Fuente oficial: CIMA / AEMPS.</div>
-
-      <h3>Principio(s) activo(s)</h3>
-      <p>${esc(medicine.active || 'No disponible')}</p>
-
-      <div class="notice">
-        No se pudo cargar la ficha completa de CIMA en este momento.
-      </div>
-    `);
-  }
-}
-async function openMedDetail(id){const m=await NurseDB.get('meds',id);if(!m)return;modal(`<div class="modal-head"><h2>${esc(m.name)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p class="small muted">Disponible offline · guardado ${m.savedAt?new Date(m.savedAt).toLocaleDateString('es-ES'):''}</p><p><strong>Registro:</strong> ${esc(m.registration||'—')}</p><p><strong>Principio(s) activo(s):</strong> ${esc(m.active||'—')}</p><div class="source-card">Fuente original: CIMA / AEMPS. Verifica siempre la ficha técnica vigente antes de usar información de administración.</div><div class="modal-actions"><button class="btn danger" id="delMed">Eliminar del botiquín</button></div>`);$('#delMed').onclick=async()=>{await NurseDB.remove('meds',id);closeModal();toast('Eliminado')}}
+async function openMedDetail(id){const m=await NurseDB.get('meds',id);if(!m)return;const c=m.clinical||{};modal(`<div class="modal-head"><h2>${esc(m.name)}</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p class="small muted">Copia offline · guardada ${m.savedAt?new Date(m.savedAt).toLocaleDateString('es-ES'):''}</p><div class="source-card"><strong>Registro:</strong> ${esc(m.registration||'—')}<br><strong>Principio activo:</strong> ${esc(m.active||'—')}</div>${clinicalBlock('Posología y forma de administración · FT 4.2',c.posology,'critical')}${clinicalBlock('Incompatibilidades · FT 6.2',c.incompatibilities,'critical')}${clinicalBlock('Manipulación, preparación y eliminación · FT 6.6',c.handling,'critical')}${clinicalBlock('Contraindicaciones · FT 4.3',c.contraindications,'critical')}${clinicalBlock('Advertencias y precauciones · FT 4.4',c.warnings)}${clinicalBlock('Interacciones · FT 4.5',c.interactions)}${clinicalBlock('Reacciones adversas · FT 4.8',c.adverse)}${clinicalBlock('Conservación · FT 6.4',c.storage)}<div class="notice info">Contenido almacenado desde CIMA/AEMPS. Si hay conexión, vuelve a consultar CIMA para comprobar cambios recientes.</div><div class="modal-actions"><button class="btn danger" id="delMed">Eliminar del botiquín</button></div>`);$('#delMed').onclick=async()=>{await NurseDB.remove('meds',id);closeModal();toast('Eliminado')}}
 async function openScanner(){modal(`<div class="modal-head"><h2>Escáner de código</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div id="scannerArea"></div><p class="small muted">Si tu navegador no ofrece detección de códigos compatible, puedes introducir el código manualmente.</p><label>Código manual</label><div class="form-row"><input class="field" id="manualBarcode" inputmode="numeric"><button class="btn primary" id="barcodeSearch">Buscar</button></div>`);const area=$('#scannerArea');if('BarcodeDetector'in window){area.innerHTML=`<div class="scanner"><video id="scanVideo" autoplay playsinline></video><div class="scanner-line"></div></div><button class="btn block" id="startScan" style="margin-top:10px">Activar cámara</button>`;$('#startScan').onclick=startNativeScan}else area.innerHTML='<div class="notice">Este iPhone/navegador no expone BarcodeDetector. Usa el código manual; la app mantiene el resto de funciones sin depender de la cámara.</div>';$('#barcodeSearch').onclick=()=>searchBarcode($('#manualBarcode').value)}
 async function startNativeScan(){try{const video=$('#scanVideo');const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:{ideal:'environment'}}});video.srcObject=stream;const detector=new BarcodeDetector({formats:['ean_13','ean_8','data_matrix','code_128']});const loop=async()=>{if(!video.srcObject)return;try{const codes=await detector.detect(video);if(codes.length){stream.getTracks().forEach(t=>t.stop());$('#manualBarcode').value=codes[0].rawValue;searchBarcode(codes[0].rawValue);return}}catch{}requestAnimationFrame(loop)};requestAnimationFrame(loop)}catch{toast('No se pudo abrir la cámara')}}
 async function searchBarcode(code){code=String(code||'').trim();if(!code)return toast('Introduce un código');closeModal();openMedSearch();setTimeout(()=>{$('#medQuery').value=code;searchCIMA(code)},50)}
@@ -477,8 +282,13 @@ async function openStudyStats(){const cards=await NurseDB.all('flashcards');moda
 
 async function openGlobalSearch(){modal(`<div class="modal-head"><h2>Buscar en NurseFlow</h2><button class="icon-btn" onclick="closeModal()">×</button></div><input class="field" id="globalQ" autofocus placeholder="Medicamento, técnica, caso, abreviatura…"><div id="globalResults"></div>`);$('#globalQ').oninput=async e=>{const q=e.target.value.trim().toLowerCase();if(q.length<2)return $('#globalResults').innerHTML='';const [cases,procs,meds,cards]=await Promise.all([NurseDB.all('cases'),NurseDB.all('procedures'),NurseDB.all('meds'),NurseDB.all('flashcards')]);const out=[];procs.filter(x=>x.name.toLowerCase().includes(q)).slice(0,5).forEach(x=>out.push(`<button class="list-row clickable" data-gproc="${x.id}"><span class="pill">Técnica</span><div class="grow"><strong>${esc(x.name)}</strong></div></button>`));cases.filter(x=>`${x.diagnosis} ${x.learning} ${x.review}`.toLowerCase().includes(q)).slice(0,5).forEach(x=>out.push(`<button class="list-row clickable" data-gcase="${x.id}"><span class="pill">Caso</span><div class="grow"><strong>${esc(x.diagnosis)}</strong><div class="sub">${dateFmt(x.date)}</div></div></button>`));meds.filter(x=>x.name.toLowerCase().includes(q)).slice(0,5).forEach(x=>out.push(`<button class="list-row clickable" data-gmed="${x.id}"><span class="pill">Rx</span><div class="grow"><strong>${esc(x.name)}</strong></div></button>`));NURSE_DATA.glossary.filter(x=>`${x[0]} ${x[1]}`.toLowerCase().includes(q)).slice(0,5).forEach(x=>out.push(`<div class="list-row"><span class="pill">Diccionario</span><div class="grow"><strong>${esc(x[0])}</strong><div class="sub">${esc(x[1])}</div></div></div>`));cards.filter(x=>`${x.q} ${x.a}`.toLowerCase().includes(q)).slice(0,5).forEach(x=>out.push(`<div class="list-row"><span class="pill">Estudio</span><div class="grow"><strong>${esc(x.q)}</strong></div></div>`));$('#globalResults').innerHTML=`<div class="list" style="margin-top:12px">${out.join('')||noData('Sin resultados locales')}</div>`;$$('[data-gproc]').forEach(b=>b.onclick=()=>{closeModal();openProcedure(b.dataset.gproc)});$$('[data-gcase]').forEach(b=>b.onclick=()=>{closeModal();openCaseDetail(b.dataset.gcase)});$$('[data-gmed]').forEach(b=>b.onclick=()=>{closeModal();openMedDetail(b.dataset.gmed)})}}
 
-async function openSettings(){modal(`<div class="modal-head"><h2>Ajustes</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="list"><button class="list-row clickable" id="setProfile"><div class="avatar">☺</div><div class="grow"><strong>Perfil académico</strong><div class="sub">Nombre, curso y Prácticum</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setAppearance"><div class="avatar">◐</div><div class="grow"><strong>Apariencia</strong><div class="sub">Tema claro, oscuro o sistema</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setPrivacy"><div class="avatar">⌁</div><div class="grow"><strong>Privacidad y bloqueo</strong><div class="sub">PIN, biometría y autobloqueo</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setApis"><div class="avatar">API</div><div class="grow"><strong>APIs y fuentes</strong><div class="sub">CIMA / CIE-11 / Worker</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setData"><div class="avatar">⇩</div><div class="grow"><strong>Datos y backup</strong><div class="sub">Exportar, importar y restablecer</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setOffline"><div class="avatar">✓</div><div class="grow"><strong>Offline e instalación</strong><div class="sub">Estado de PWA y almacenamiento</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setAbout"><div class="avatar">i</div><div class="grow"><strong>Acerca de</strong><div class="sub">Fuentes, límites y versión</div></div><span class="chev">›</span></button></div>`);$('#setProfile').onclick=()=>{closeModal();openProfileSettings()};$('#setAppearance').onclick=()=>{closeModal();openAppearanceSettings()};$('#setPrivacy').onclick=()=>{closeModal();openPrivacySettings()};$('#setApis').onclick=()=>{closeModal();openApiSettings()};$('#setData').onclick=()=>{closeModal();openDataSettings()};$('#setOffline').onclick=()=>{closeModal();openOfflineSettings()};$('#setAbout').onclick=()=>{closeModal();openAbout()}}
-function openProfileSettings(){modal(`<div class="modal-head"><h2>Perfil académico</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="profileForm"><label>Nombre</label><input class="field" name="name" value="${esc(state.settings.profileName)}" placeholder="Opcional"><label>Curso</label><input class="field" name="course" value="${esc(state.settings.course)}"><label>Prácticum</label><input class="field" name="practicum" value="${esc(state.settings.practicum)}"><div class="modal-actions"><button class="btn primary">Guardar</button></div></form>`);$('#profileForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);state.settings.profileName=f.get('name').trim();state.settings.course=f.get('course').trim();state.settings.practicum=f.get('practicum').trim();await saveSettings();closeModal();render();toast('Perfil actualizado')}}
+async function openSettings(){modal(`<div class="modal-head"><h2>Ajustes</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="list"><button class="list-row clickable" id="setProfile"><div class="avatar">☺</div><div class="grow"><strong>Perfil académico</strong><div class="sub">Universidad, curso y asignaturas</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setPracticum"><div class="avatar">✚</div><div class="grow"><strong>Prácticas</strong><div class="sub">Centro, periodo y servicio</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setAppearance"><div class="avatar">◐</div><div class="grow"><strong>Apariencia</strong><div class="sub">Tema claro, oscuro o sistema</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setPrivacy"><div class="avatar">⌁</div><div class="grow"><strong>Privacidad y bloqueo</strong><div class="sub">PIN, biometría y autobloqueo</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setApis"><div class="avatar">API</div><div class="grow"><strong>APIs y fuentes</strong><div class="sub">CIMA / CIE-11 / Worker</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setData"><div class="avatar">⇩</div><div class="grow"><strong>Datos y backup</strong><div class="sub">Exportar, importar y restablecer</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setOffline"><div class="avatar">✓</div><div class="grow"><strong>Offline e instalación</strong><div class="sub">Estado de PWA y almacenamiento</div></div><span class="chev">›</span></button><button class="list-row clickable" id="setAbout"><div class="avatar">i</div><div class="grow"><strong>Acerca de</strong><div class="sub">Fuentes, límites y versión</div></div><span class="chev">›</span></button></div>`);$('#setProfile').onclick=()=>{closeModal();openProfileSettings()};$('#setPracticum').onclick=()=>{closeModal();openPracticumSettings()};$('#setAppearance').onclick=()=>{closeModal();openAppearanceSettings()};$('#setPrivacy').onclick=()=>{closeModal();openPrivacySettings()};$('#setApis').onclick=()=>{closeModal();openApiSettings()};$('#setData').onclick=()=>{closeModal();openDataSettings()};$('#setOffline').onclick=()=>{closeModal();openOfflineSettings()};$('#setAbout').onclick=()=>{closeModal();openAbout()}}
+function openProfileSettings(){
+  const subjects=NURSE_DATA.ucv.subjects[String(state.settings.courseNumber)]||[],selected=new Set(state.settings.selectedSubjects||[]),subjectHtml=subjects.map(([code,name,semester])=>`<label class="subject-check"><input type="checkbox" name="subjects" value="${esc(code)}" ${selected.has(code)?'checked':''}><span><strong>${esc(name)}</strong><small>${semester==='Anual'?'Anual':`Semestre ${semester}`}</small></span></label>`).join('');
+  modal(`<div class="modal-head"><h2>Perfil académico</h2><button class="icon-btn" onclick="closeModal()">×</button></div><form id="profileForm"><label>Nombre</label><input class="field" name="name" value="${esc(state.settings.profileName)}" placeholder="Opcional"><label>Universidad</label><select class="field" name="university"><option value="UCV" ${state.settings.university==='UCV'?'selected':''}>Universidad Católica de Valencia (UCV)</option><option value="other" ${state.settings.university!=='UCV'?'selected':''}>Otra universidad</option></select><label>Curso</label><select class="field" name="course" id="profileCourse">${[1,2,3,4].map(n=>`<option value="${n}" ${String(n)===String(state.settings.courseNumber)?'selected':''}>${n}º Enfermería</option>`).join('')}</select><label>Asignaturas</label><div class="subject-picker">${subjectHtml}</div><div class="modal-actions"><button class="btn primary">Guardar</button></div></form>`);
+  $('#profileCourse').onchange=async e=>{state.settings.courseNumber=e.target.value;state.settings.course=`${e.target.value}º Enfermería`;state.settings.selectedSubjects=[];await saveSettings();closeModal();openProfileSettings()};
+  $('#profileForm').onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);state.settings.profileName=f.get('name').trim();state.settings.university=f.get('university');state.settings.courseNumber=String(f.get('course'));state.settings.course=`${f.get('course')}º Enfermería`;state.settings.selectedSubjects=f.getAll('subjects');await saveSettings();closeModal();render();toast('Perfil actualizado')};
+}
 function openAppearanceSettings(){modal(`<div class="modal-head"><h2>Apariencia</h2><button class="icon-btn" onclick="closeModal()">×</button></div><label>Tema</label><select class="field" id="themeSelect"><option value="system" ${state.settings.theme==='system'?'selected':''}>Seguir sistema</option><option value="light" ${state.settings.theme==='light'?'selected':''}>Claro</option><option value="dark" ${state.settings.theme==='dark'?'selected':''}>Oscuro</option></select><label class="switch-row"><span><strong>Advertencias clínicas</strong><span class="sub">Mostrar recordatorios de verificación</span></span><span class="switch"><input id="warnSwitch" type="checkbox" ${state.settings.showClinicalWarnings?'checked':''}><span class="slider"></span></span></label><div class="modal-actions"><button class="btn primary" id="saveAppearance">Guardar</button></div>`);$('#saveAppearance').onclick=async()=>{state.settings.theme=$('#themeSelect').value;state.settings.showClinicalWarnings=$('#warnSwitch').checked;await saveSettings();closeModal();render();toast('Apariencia actualizada')}}
 async function hashText(s){const b=new TextEncoder().encode(s);const h=await crypto.subtle.digest('SHA-256',b);return [...new Uint8Array(h)].map(x=>x.toString(16).padStart(2,'0')).join('')}
 function openPrivacySettings(){modal(`<div class="modal-head"><h2>Privacidad y bloqueo</h2><button class="icon-btn" onclick="closeModal()">×</button></div><label class="switch-row"><span><strong>Bloquear al abrir</strong><span class="sub">Protege el acceso a la PWA</span></span><span class="switch"><input id="lockSwitch" type="checkbox" ${state.settings.lockEnabled?'checked':''}><span class="slider"></span></span></label><label>Método</label><select id="lockMethod" class="field"><option value="pin" ${state.settings.lockMethod==='pin'?'selected':''}>PIN</option><option value="webauthn" ${state.settings.lockMethod==='webauthn'?'selected':''}>Biometría / código del dispositivo (WebAuthn)</option></select><label>Nuevo PIN (4–8 cifras)</label><input class="field" id="newPin" inputmode="numeric" maxlength="8" placeholder="Déjalo vacío para conservarlo"><label>Autobloqueo</label><select class="field" id="autoLock"><option value="0">Nunca mientras siga abierta</option><option value="1" ${state.settings.autoLock==1?'selected':''}>1 minuto</option><option value="5" ${state.settings.autoLock==5?'selected':''}>5 minutos</option><option value="15" ${state.settings.autoLock==15?'selected':''}>15 minutos</option></select><div class="notice info">El bloqueo protege frente al acceso casual en este dispositivo. Mantén el diario anonimizado aunque uses PIN o biometría.</div><div class="modal-actions"><button class="btn primary" id="savePrivacy">Guardar</button></div>`);$('#savePrivacy').onclick=async()=>{const enabled=$('#lockSwitch').checked,method=$('#lockMethod').value,pin=$('#newPin').value.trim();if(enabled&&method==='pin'&&!state.settings.pinHash&&!/^\d{4,8}$/.test(pin))return toast('Configura un PIN de 4 a 8 cifras');if(pin){if(!/^\d{4,8}$/.test(pin))return toast('PIN no válido');state.settings.pinHash=await hashText(pin)}if(enabled&&method==='webauthn'){const ok=await enrollWebAuthn();if(!ok)return}state.settings.lockEnabled=enabled;state.settings.lockMethod=method;state.settings.autoLock=+$('#autoLock').value;await saveSettings();closeModal();toast('Privacidad actualizada')}}
@@ -486,12 +296,12 @@ async function enrollWebAuthn(){if(!window.PublicKeyCredential||!navigator.crede
 function showLock(){const l=$('#appLock');l.classList.remove('hidden');l.innerHTML=`<div class="lock-card"><div class="lock-icon">⌁</div><h2>NurseFlow bloqueado</h2><p>${state.settings.lockMethod==='webauthn'?'Usa la autenticación del dispositivo para continuar.':'Introduce tu PIN.'}</p>${state.settings.lockMethod==='pin'?'<div id="pinDots" class="pin-dots"></div><div class="pin-grid">'+[1,2,3,4,5,6,7,8,9,'←',0,'✓'].map(x=>`<button data-pin="${x}">${x}</button>`).join('')+'</div>':'<button class="btn primary block" id="bioUnlock">Desbloquear</button>'}</div>`;if(state.settings.lockMethod==='pin'){let pin='';const draw=()=>$('#pinDots').textContent='•'.repeat(pin.length);$$('[data-pin]').forEach(b=>b.onclick=async()=>{const v=b.dataset.pin;if(v==='←')pin=pin.slice(0,-1);else if(v==='✓'){if(await hashText(pin)===state.settings.pinHash)unlockApp();else{pin='';toast('PIN incorrecto')}}else if(pin.length<8)pin+=v;draw()})}else $('#bioUnlock').onclick=webAuthnUnlock}
 async function webAuthnUnlock(){try{const raw=Uint8Array.from(atob(state.settings.credentialId||''),c=>c.charCodeAt(0));await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),allowCredentials:[{type:'public-key',id:raw}],userVerification:'required',timeout:60000}});unlockApp()}catch{toast('No se pudo autenticar')}}
 function unlockApp(){state.unlocked=true;state.lastActive=Date.now();$('#appLock').classList.add('hidden');render()}
-function openApiSettings(){modal(`<div class="modal-head"><h2>APIs y fuentes</h2><button class="icon-btn" onclick="closeModal()">×</button></div><label>Modo de acceso a CIMA</label><select class="field" id="apiMode"><option value="direct" ${state.settings.apiMode==='direct'?'selected':''}>Directo desde la PWA</option><option value="worker" ${state.settings.apiMode==='worker'?'selected':''}>A través del Worker</option></select><label>URL del Cloudflare Worker</label><input class="field" id="workerUrl" value="${esc(state.settings.icdWorker)}" placeholder="https://nurseflow-api.tuusuario.workers.dev"><div class="notice info">CIE-11 requiere un Worker con credenciales OMS. El mismo Worker puede actuar como proxy para CIMA si el navegador bloquea la llamada directa.</div><div class="modal-actions"><button class="btn" id="testWorker">Probar</button><button class="btn primary" id="saveApis">Guardar</button></div>`);$('#saveApis').onclick=async()=>{state.settings.apiMode=$('#apiMode').value;state.settings.icdWorker=$('#workerUrl').value.trim().replace(/\/$/,'');await saveSettings();closeModal();toast('APIs actualizadas')};$('#testWorker').onclick=async()=>{const u=$('#workerUrl').value.trim().replace(/\/$/,'');if(!u)return toast('Introduce una URL');try{const r=await fetch(`${u}/health`);toast(r.ok?'Worker operativo':'El Worker respondió con error')}catch{toast('No se pudo conectar al Worker')}}}
+function openApiSettings(){modal(`<div class="modal-head"><h2>APIs y fuentes</h2><button class="icon-btn" onclick="closeModal()">×</button></div><label>Acceso a CIMA / AEMPS</label><select class="field" id="apiMode"><option value="direct" ${state.settings.apiMode==='direct'?'selected':''}>Directo desde la PWA</option><option value="worker" ${state.settings.apiMode==='worker'?'selected':''}>A través del Worker</option></select><label>URL del Cloudflare Worker</label><input class="field" id="workerUrl" value="${esc(state.settings.icdWorker)}" placeholder="https://nurseflow-api.tuusuario.workers.dev"><div class="notice info">El Worker es opcional para CIMA y necesario para CIE-11 si quieres mantener las credenciales OMS fuera del navegador. La ficha de medicamentos usa medicamento, ficha técnica segmentada, notas y materiales de seguridad de CIMA.</div><div class="modal-actions"><button class="btn" id="testWorker">Probar</button><button class="btn primary" id="saveApis">Guardar</button></div>`);$('#saveApis').onclick=async()=>{state.settings.apiMode=$('#apiMode').value;state.settings.icdWorker=$('#workerUrl').value.trim().replace(/\/$/,'');await saveSettings();closeModal();toast('APIs actualizadas')};$('#testWorker').onclick=async()=>{const u=$('#workerUrl').value.trim().replace(/\/$/,'');if(!u)return toast('Introduce una URL');try{const r=await fetch(`${u}/health`);toast(r.ok?'Worker operativo':'El Worker respondió con error')}catch{toast('No se pudo conectar al Worker')}}}
 async function openDataSettings(){const estimate=navigator.storage?.estimate?await navigator.storage.estimate():{};modal(`<div class="modal-head"><h2>Datos y backup</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="card compact"><strong>Almacenamiento local</strong><p class="small muted">Uso aproximado: ${estimate.usage?Math.round(estimate.usage/1024/1024*10)/10+' MB':'no disponible'}</p></div><div class="list"><button class="list-row clickable" id="exportData"><div class="avatar">⇩</div><div class="grow"><strong>Exportar copia</strong><div class="sub">JSON con todos los datos locales</div></div></button><button class="list-row clickable" id="importData"><div class="avatar">⇧</div><div class="grow"><strong>Importar copia</strong><div class="sub">Reemplaza los datos actuales</div></div></button><button class="list-row clickable" id="resetData"><div class="avatar danger-text">!</div><div class="grow"><strong class="danger-text">Restablecer app</strong><div class="sub">Elimina todos los datos locales</div></div></button></div>`);$('#exportData').onclick=exportBackup;$('#importData').onclick=()=>$('#fileImport').click();$('#resetData').onclick=async()=>{if(confirm('Se eliminarán todos los datos locales de NurseFlow. ¿Continuar?')){await NurseDB.reset();location.reload()}}}
 async function exportBackup(){const payload=await NurseDB.exportAll();const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=`nurseflow-backup-${isoToday()}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Copia exportada')}
 async function importBackupFile(e){const file=e.target.files?.[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!confirm('La importación reemplazará los datos actuales. ¿Continuar?'))return;await NurseDB.importAll(data);location.reload()}catch{toast('Archivo de copia no válido')}finally{e.target.value=''}}
 async function openOfflineSettings(){let persisted=false;try{persisted=await navigator.storage?.persisted?.()}catch{}modal(`<div class="modal-head"><h2>Offline e instalación</h2><button class="icon-btn" onclick="closeModal()">×</button></div><div class="list"><div class="list-row"><div class="avatar">${navigator.onLine?'✓':'×'}</div><div class="grow"><strong>${navigator.onLine?'Con conexión':'Modo offline'}</strong><div class="sub">La base local y las herramientas siguen funcionando.</div></div></div><div class="list-row"><div class="avatar">${'serviceWorker'in navigator?'✓':'×'}</div><div class="grow"><strong>Service Worker</strong><div class="sub">${'serviceWorker'in navigator?'Compatible':'No compatible'}</div></div></div><div class="list-row"><div class="avatar">${persisted?'✓':'·'}</div><div class="grow"><strong>Almacenamiento persistente</strong><div class="sub">${persisted?'Concedido':'No confirmado'}</div></div></div></div><div class="modal-actions"><button class="btn" id="askPersist">Solicitar persistencia</button></div>`);$('#askPersist').onclick=async()=>{try{const ok=await navigator.storage.persist();toast(ok?'Persistencia concedida':'El navegador no la concedió')}catch{toast('No disponible')}}}
-function openAbout(){modal(`<div class="modal-head"><h2>Acerca de NurseFlow</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p><strong>Versión 1.0.0</strong></p><p class="small muted">PWA local-first para organización académica, Prácticum y estudio de Enfermería.</p><h3>Fuentes externas</h3><div class="list"><div class="list-row"><div class="grow"><strong>CIMA / AEMPS</strong><div class="sub">Información oficial de medicamentos cuando hay conexión.</div></div></div><div class="list-row"><div class="grow"><strong>OMS CIE-11</strong><div class="sub">Consulta mediante API oficial a través del Worker configurado.</div></div></div></div><h3>Privacidad</h3><p class="small muted">Los casos, horarios, notas, procedimientos, tareas, flashcards y botiquín se almacenan en el navegador del dispositivo. La app no envía el diario a un servidor propio.</p><h3>Límites</h3><p class="small muted">No almacenes información identificativa de pacientes. Las herramientas clínicas son educativas y deben contrastarse con fuentes y protocolos vigentes.</p>`)}
+function openAbout(){modal(`<div class="modal-head"><h2>Acerca de NurseFlow</h2><button class="icon-btn" onclick="closeModal()">×</button></div><p><strong>Versión 2.0.0</strong></p><p class="small muted">PWA local-first para organización académica, prácticas y estudio de Enfermería.</p><h3>Fuentes</h3><div class="list"><div class="list-row"><div class="grow"><strong>CIMA / AEMPS</strong><div class="sub">Medicamentos, ficha técnica segmentada, notas y materiales de seguridad.</div></div></div><div class="list-row"><div class="grow"><strong>OMS CIE-11</strong><div class="sub">Consulta opcional mediante API oficial.</div></div></div><div class="list-row"><div class="grow"><strong>UCV</strong><div class="sub">Asignaturas del Grado en Enfermería usadas para facilitar la configuración del horario.</div></div></div></div><h3>Privacidad</h3><p class="small muted">Horario, tareas, casos, procedimientos, notas y fichas guardadas se almacenan localmente en el navegador. No introduzcas datos identificativos de pacientes.</p><h3>Uso clínico</h3><p class="small muted">La vista de CIMA reorganiza información oficial para consulta rápida, pero no sustituye la prescripción, la ficha técnica vigente, los protocolos del centro ni la supervisión correspondiente.</p>`)}
 
 window.closeModal=closeModal; window.openCaseDetail=openCaseDetail; window.openProcedure=openProcedure;
 boot();
