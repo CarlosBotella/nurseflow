@@ -1,91 +1,72 @@
-# NurseFlow PWA
+# NurseFlow
 
-PWA local-first para una estudiante de Enfermería. Está pensada para funcionar en GitHub Pages sin proceso de compilación.
+PWA local-first para una estudiante de Enfermería: universidad, Prácticum, consulta rápida y estudio. Está preparada para alojarse en GitHub Pages sin npm, compilación ni servidor propio.
 
-## Qué incluye esta versión
+## Qué incluye
 
-- Pantalla Hoy con accesos rápidos.
-- Semana tipo local para Universidad.
-- Prácticum con configuración, registro de casos anonimizados y recordatorio de asistencia UCV.
-- Relación caso → procedimientos → grado de participación.
-- Portfolio automático de procedimientos.
-- La Batea editable y local.
-- Consulta a CIMA/AEMPS y caché local de medicamentos consultados.
-- Calculadoras educativas: ml/h, goteo e IMC.
-- Escala de Glasgow como suma estructurada.
-- Flashcards y cola de repaso desde el diario.
-- IndexedDB para persistencia local.
-- Service Worker para funcionamiento offline de la app.
-- Worker opcional para CIE-11/OMS.
-- Modo claro/oscuro automático.
-
-## Privacidad
-
-Los casos se guardan exclusivamente en IndexedDB del navegador. La interfaz evita campos identificativos y muestra avisos para no registrar nombre, iniciales, SIP, historia clínica, habitación/cama o fotografías del paciente.
-
-**Importante:** esta app es una herramienta académica y organizativa. No sustituye supervisión clínica, protocolos del centro, ficha técnica, rangos oficiales del laboratorio ni UCVEalúa.
+- **Hoy**: resumen del Prácticum, accesos rápidos, clases del día y tareas.
+- **Universidad**: semana tipo, excepciones por fecha, pendientes, espacio PAE y acceso a estudio.
+- **Prácticum**: configuración de centro/servicio, registro del día, diario de casos anonimizado, relación patología-procedimiento-participación, portfolio, preparación de tutoría y resumen para la memoria.
+- **Consulta**: CIMA/AEMPS, botiquín offline, escáner cuando el navegador soporta `BarcodeDetector`, entrada manual de código, La Batea con 30 técnicas editables, calculadoras, Glasgow/Barthel/Norton/Braden/EVA, analíticas orientativas, diccionario y CIE-11.
+- **Estudio**: flashcards con repetición sencilla, preguntas originales tipo test, repaso derivado de casos y estadísticas.
+- **Ajustes**: perfil, apariencia, privacidad, PIN/WebAuthn, autobloqueo, APIs, backup, importación, almacenamiento, modo offline, instalación y fuentes.
+- **Offline**: IndexedDB + Service Worker. Horarios, casos, Batea, flashcards, escalas, calculadoras y botiquín guardado funcionan sin internet.
 
 ## Publicar gratis en GitHub Pages
 
-1. Crea un repositorio nuevo en GitHub, por ejemplo `nurseflow`.
-2. Sube todos los archivos de esta carpeta manteniendo la estructura.
-3. En GitHub abre **Settings → Pages**.
-4. En **Build and deployment**, selecciona **Deploy from a branch**.
-5. Elige la rama `main` y carpeta `/ (root)`.
-6. Guarda. GitHub mostrará la URL de la PWA.
-7. Abre esa URL en Safari en el iPhone y usa **Compartir → Añadir a pantalla de inicio**.
+1. Crea un repositorio en GitHub.
+2. Sube **el contenido de esta carpeta a la raíz** del repositorio (`index.html`, `app.js`, etc.).
+3. En GitHub: `Settings > Pages > Build and deployment`.
+4. Elige `Deploy from a branch`.
+5. Selecciona `main` y `/ (root)`.
+6. Espera a que GitHub publique la URL HTTPS.
+7. En iPhone abre esa URL con Safari y usa `Compartir > Añadir a pantalla de inicio`.
 
-## CIE-11 con Cloudflare Worker (opcional)
+La PWA no necesita un dominio propio.
 
-El archivo `worker.js` contiene un Worker para actuar como backend de la API oficial WHO ICD-11. No lo subas como secreto: el código puede ser público, pero las credenciales deben configurarse como Secrets en Cloudflare.
+## CIE-11: Cloudflare Worker gratuito
 
-Secrets:
-- `WHO_CLIENT_ID`
-- `WHO_CLIENT_SECRET`
+La API oficial de la OMS requiere OAuth2 con `client_id` y `client_secret`, por lo que esas credenciales no deben estar en el JavaScript público de GitHub Pages.
 
-Variable recomendada:
-- `ALLOWED_ORIGIN=https://TU_USUARIO.github.io`
+1. Registra una aplicación en el portal ICD API de la OMS y obtén `client id` y `client secret`.
+2. Crea un Cloudflare Worker.
+3. Copia el contenido de `worker.js`.
+4. Añade dos secretos al Worker:
+   - `WHO_CLIENT_ID`
+   - `WHO_CLIENT_SECRET`
+5. Despliega el Worker.
+6. En NurseFlow entra en `Ajustes > APIs y fuentes` y pega la URL del Worker.
+7. Pulsa `Probar`.
 
-Después de desplegar el Worker, abre NurseFlow → **Prácticum → Configurar prácticum** y pega la URL del Worker.
+El Worker también ofrece `/cima` como proxy opcional de CIMA. Si la consulta directa desde Safari no funciona, selecciona `A través del Worker` en Ajustes.
 
-La API de OMS usa OAuth2 Client Credentials y requiere la cabecera `API-Version: v2`. El Worker está configurado para la release ICD-11 MMS `2026-01` en español.
+## Privacidad
 
-## CIMA / AEMPS
+Los horarios, casos, procedimientos, tareas, flashcards y botiquín se guardan en IndexedDB dentro del navegador. NurseFlow no tiene una base de datos remota propia.
 
-La búsqueda usa la API pública CIMA con:
+El diario se ha diseñado para registrar **casos de aprendizaje anonimizados**. No deben guardarse nombres, iniciales, SIP, historia clínica, habitación, fechas de nacimiento, fotografías ni otros datos que puedan identificar a un paciente.
 
-`https://cima.aemps.es/cima/rest/medicamentos?nombre=...`
+El bloqueo mediante PIN o WebAuthn protege el acceso casual a la PWA, pero no convierte un registro identificativo en apropiado. La regla principal sigue siendo minimizar y anonimizar datos.
 
-Y para el detalle:
+## Límites deliberados
 
-`https://cima.aemps.es/cima/rest/medicamento?nregistro=...`
+- **NANDA-I / NIC / NOC**: la app incluye el espacio de trabajo e importación manual, pero no distribuye una base propietaria sin licencia.
+- **CIE-11**: necesita el Worker configurado y conexión para nuevas búsquedas.
+- **CIMA**: las nuevas consultas necesitan internet; los medicamentos guardados quedan offline.
+- **Escáner**: usa `BarcodeDetector` si el navegador lo expone. Si no, se puede introducir el código manualmente.
+- Las calculadoras, escalas, valores orientativos y material de técnicas son herramientas académicas. Deben contrastarse con las fuentes oficiales y protocolos del centro.
 
-Si CIMA bloquea una llamada directa desde un navegador por CORS o cambia su API, conviene enrutar también CIMA a través del Worker.
+## Archivos
 
-## Desarrollo local
+- `index.html` – shell de la PWA.
+- `styles.css` – diseño responsive, safe areas de iPhone/iPad y modo oscuro.
+- `db.js` – IndexedDB.
+- `data.js` – contenido local inicial.
+- `app.js` – lógica de la aplicación.
+- `sw.js` – Service Worker y caché offline.
+- `manifest.webmanifest` – instalación PWA.
+- `worker.js` – backend opcional de Cloudflare para OMS/CIMA.
 
-Los Service Workers necesitan HTTP/HTTPS. No abras `index.html` directamente con `file://`.
+## Actualizaciones
 
-Por ejemplo:
-
-```bash
-python3 -m http.server 8080
-```
-
-Luego abre `http://localhost:8080`.
-
-## Copia de seguridad
-
-La capa `db.js` ya incluye `exportAll()` e `importAll()` para implementar exportación/importación cifrada en una siguiente versión. La interfaz de backup todavía no está expuesta en esta primera entrega.
-
-## Próximos módulos previstos
-
-- Excepciones de calendario por fecha.
-- Vista calendario completa.
-- Backup cifrado exportable/importable.
-- Bloqueo del diario mediante WebAuthn/passkeys cuando la estrategia esté validada en iOS.
-- Analíticas y diccionario con fuentes curadas.
-- Barthel, Norton y Braden con criterios y referencias verificadas.
-- Escáner de códigos de medicamento.
-- NANDA/NIC/NOC sujeto a licencia/fuente autorizada.
-- Modo de preparación de tutoría y generador de material para la memoria.
+Para publicar una nueva versión, sustituye los archivos del repositorio. Si cambias archivos estáticos, incrementa el nombre de `CACHE` en `sw.js` para forzar la actualización del contenido offline.

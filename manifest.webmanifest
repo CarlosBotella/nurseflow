@@ -1,13 +1,13 @@
 {
-  "name": "NurseFlow · Enfermería",
+  "name": "NurseFlow",
   "short_name": "NurseFlow",
-  "description": "Organización académica, prácticum y consulta rápida para estudiantes de Enfermería.",
+  "description": "PWA local-first para universidad, prácticum, consulta y estudio de Enfermería.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
-  "background_color": "#f6f8fb",
-  "theme_color": "#f6f8fb",
   "orientation": "portrait-primary",
+  "background_color": "#eef5f5",
+  "theme_color": "#eef5f5",
   "icons": [
     {"src":"./assets/icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any maskable"},
     {"src":"./assets/icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}

@@ -1,32 +1,38 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#f6f8fb" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="NurseFlow" />
-  <meta name="description" content="PWA local-first para organizar universidad, prácticum y estudio de Enfermería." />
-  <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="./assets/icons/icon-180.png" />
-  <link rel="icon" href="./assets/icons/icon-192.png" />
-  <link rel="stylesheet" href="./styles.css" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#eef5f5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="NurseFlow">
+  <meta name="description" content="NurseFlow: PWA local-first para universidad, prácticum, consulta y estudio de Enfermería.">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./assets/icons/icon-180.png">
+  <link rel="icon" href="./assets/icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css">
   <title>NurseFlow</title>
 </head>
 <body>
+  <div id="appLock" class="lock-screen hidden" aria-live="polite"></div>
   <div id="installBanner" class="install-banner hidden">
-    <div><strong>Instalar NurseFlow</strong><span>Añádela a tu pantalla de inicio para usarla como app.</span></div>
-    <button id="installBtn" class="btn primary">Instalar</button>
+    <div class="grow"><strong>Instalar NurseFlow</strong><span>Úsala como una app y mantén el contenido disponible offline.</span></div>
+    <button id="installBtn" class="btn primary small-btn">Instalar</button>
     <button id="installClose" class="icon-btn" aria-label="Cerrar">×</button>
   </div>
 
   <header class="topbar">
-    <div>
-      <p id="contextLabel" class="eyebrow">Modo estudiante</p>
+    <div class="topbar-copy">
+      <p id="contextLabel" class="eyebrow">NurseFlow</p>
       <h1 id="pageTitle">Hoy</h1>
     </div>
-    <button id="quickSearchBtn" class="icon-btn search-btn" aria-label="Buscar">⌕</button>
+    <div class="top-actions">
+      <button id="syncStatus" class="status-dot" aria-label="Estado de conexión" title="Estado de conexión"></button>
+      <button id="quickSearchBtn" class="icon-btn" aria-label="Buscar">⌕</button>
+      <button id="settingsBtn" class="icon-btn" aria-label="Ajustes">⚙</button>
+    </div>
   </header>
 
   <main id="app" class="app-shell" aria-live="polite"></main>
@@ -41,8 +47,10 @@
 
   <dialog id="modal" class="modal"><div id="modalContent"></div></dialog>
   <div id="toast" class="toast hidden"></div>
+  <input id="fileImport" type="file" accept="application/json,.json" hidden>
 
   <script src="./db.js"></script>
+  <script src="./data.js"></script>
   <script src="./app.js"></script>
 </body>
 </html>
