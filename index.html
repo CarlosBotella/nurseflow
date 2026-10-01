@@ -1302,8 +1302,10 @@
                                 $('#modalOverlay').classList.add('open');
                                 $('#modCieClose').onclick = () => $('#modalOverlay').classList.remove('open');
 
-                                const entityUri = x.id || x.foundationUri || '';
-                                const entityId = entityUri.split('/').pop();
+                                const entityUri = x.foundationUri || x.id || '';
+                                // Extrae de forma segura el ID numérico (secuencia de 6+ dígitos), ignorando sufijos como "/unspecified"
+                                const safeMatch = entityUri.match(/\/(\d{6,})/);
+                                const entityId = safeMatch ? safeMatch[1] : null;
 
                                 if (entityId) {
                                     try {
