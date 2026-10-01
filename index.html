@@ -1365,9 +1365,13 @@
                                         $('#cieDetailsBox').innerHTML = finalHtml;
                                         
                                     } catch (e) {
+                                        // 1. Imprimimos el error real en la consola oculta del navegador
+                                        console.error("Fallo exacto en CIE-11:", e);
+                                        
+                                        // 2. Mostramos el error real en la pantalla
                                         $('#cieDetailsBox').innerHTML = `
-                                            <div style="margin-top: 16px; padding: 12px; font-size: 0.85em; color: var(--text-muted); background: var(--bg-hover); border-radius: var(--radius-md); text-align: center;">
-                                                No se pudo descargar la descripción clínica detallada. Verifica tu conexión.
+                                            <div style="margin-top: 16px; padding: 12px; font-size: 0.85em; color: var(--danger); background: var(--danger-bg); border-radius: var(--radius-md); text-align: center;">
+                                                Error técnico: <b>${esc(e.message)}</b>
                                             </div>`;
                                     }
                                 } else {
