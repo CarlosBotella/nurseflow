@@ -1191,10 +1191,7 @@
                     state.slideOverOpen = false; renderView(); UI.toast('Clase guardada');
                 };
             }
-            if(view === 'exceptions') $('#exceptionForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Excepción guardada'); };
-            if(view === 'tasks') {
-                $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });
-                $('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
+            if(view === 'exceptions') $('#exceptionForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Excepción guardada'); };             if(view === 'tasks') {                 $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });$('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
             }
             if(view === 'pae') $('#paeForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('pae', {id: uid(), type: f.get('type'), code: f.get('code').trim(), title: f.get('title').trim(), notes: f.get('notes').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Guardado'); };
 
@@ -1261,6 +1258,7 @@
             if(view === 'scaleForm' && data !== 'eva') {
                 $('#scaleExec').onsubmit = e => { e.preventDefault(); const f = new FormData(e.target); let r = 0; for(let [k,v] of f.entries()) r+=Number(v); const res = $('#scaleRes'); res.querySelector('b').textContent = r; res.classList.remove('hidden'); };
             }
+            
             if(view === 'icdSearch') {
                 $('#icdBtn').onclick = async () => {
                     const q = $('#icdQ').value.trim(); 
@@ -1281,14 +1279,12 @@
                         
                         box.innerHTML = `<div class="list">${arr.slice(0,15).map((x,i)=>`<button class="list-row clickable" data-icdidx="${i}"><div class="avatar" style="font-size:0.65rem">CIE</div><div class="grow"><strong>${esc((x.title||x.bestMatchText||'').replace(/<[^>]*>/g,''))}</strong><div class="sub">${esc(x.theCode||x.code||'')}</div></div><span class="chev">›</span></button>`).join('') || UIHelpers.noData('Sin resultados')}</div>`; 
                         
-                        // AQUÍ ES DONDE SE INTEGRA TU LÓGICA DE DETALLES
                         box.querySelectorAll('[data-icdidx]').forEach(btn => {
                             btn.onclick = async () => {
                                 const x = arr[+btn.dataset.icdidx];
                                 const code = x.theCode || x.code || 'Buscando';
                                 const title = (x.title || x.bestMatchText || '').replace(/<[^>]*>/g, '');
                                 
-                                // 1. Abrimos el nuevo modal con estado de carga
                                 $('#modalTitle').textContent = `CIE-11: ${code}`;
                                 $('#modalBody').innerHTML = `
                                     <div style="font-size:1.15rem; margin-bottom:12px; color:var(--primary); line-height:1.3;"><strong>${title}</strong></div>
@@ -1303,7 +1299,6 @@
                                 $('#modalOverlay').classList.add('open');
                                 $('#modCieClose').onclick = () => $('#modalOverlay').classList.remove('open');
 
-                                // 2. Llamada al Worker y parseo de JSON-LD
                                 const entityUri = x.id || x.foundationUri || '';
                                 const entityId = entityUri.split('/').pop();
 
@@ -1314,11 +1309,9 @@
                                         
                                         const detailData = await detailRes.json();
                                         
-                                        // Definición
                                         const def = detailData.definition;
                                         const definition = def?.['@value'] || def?.value || detailData.description || 'No hay una descripción médica extendida disponible en la base de la OMS para este diagnóstico.';
                                         
-                                        // Exclusiones
                                         let exclusionsHtml = '';
                                         if (detailData.exclusion && detailData.exclusion.length > 0) {
                                             const exList = detailData.exclusion.map(ex => ex.label?.['@value'] || ex.label?.value).filter(Boolean);
@@ -1333,7 +1326,6 @@
                                             }
                                         }
 
-                                        // Sinónimos
                                         let synonymsHtml = '';
                                         if (detailData.synonym && detailData.synonym.length > 0) {
                                             const synList = detailData.synonym.map(s => s.label?.['@value'] || s.label?.value).filter(Boolean);
@@ -1344,12 +1336,10 @@
 
                                         const browserUrl = detailData.browserUrl || (entityUri ? `https://icd.who.int/browse11/l-m/es#/http%3a%2f%2fid.who.int%2ficd%2fentity%2f${entityId}` : '#');
                                         
-                                        // Mostrar Botón Oficial
                                         const btnFicha = $('#btnFichaOMS');
                                         btnFicha.href = browserUrl;
                                         btnFicha.classList.remove('hidden');
 
-                                        // Renderizar detalles limpios
                                         $('#cieDetailsBox').innerHTML = `
                                             <p style="line-height: 1.5; font-size: 0.95em; color: var(--text-muted);">${esc(definition)}</p>
                                             ${exclusionsHtml}
@@ -1383,8 +1373,7 @@
                         </div>
                         <button class="btn primary block" id="fShow">Mostrar Respuesta</button>
                         <div id="fRate" class="grid-2 hidden" style="margin-top:16px"><button class="btn" data-r="again">Otra vez (0d)</button><button class="btn primary" data-r="good">Bien (+d)</button></div>`;
-                    $('#fShow').onclick = () => { $('#fAns').classList.remove('hidden'); $('#fRate').classList.remove('hidden'); $('#fShow').classList.add('hidden'); };
-                    $$('[data-r]').forEach(b => b.onclick = async () => {
+                    $('#fShow').onclick = () => { $('#fAns').classList.remove('hidden'); $('#fRate').classList.remove('hidden'); $('#fShow').classList.add('hidden'); };                     $$('[data-r]').forEach(b => b.onclick = async () => {
                         const r = b.dataset.r; c.reps++; 
                         if(r==='again') { c.interval = 0; c.due = getLocalISOToday(); }
                         if(r==='good') { c.interval = Math.max(1, Math.round((c.interval||1)*1.8)); const d = new Date(); d.setDate(d.getDate()+c.interval); c.due = d.toISOString().slice(0,10); }
@@ -1398,8 +1387,8 @@
                     if(idx >= qs.length) { g.innerHTML = `<div class="score-big"><b>${score}/${qs.length}</b><span>Aciertos</span></div>`; return; }
                     const q = qs[idx];
                     g.innerHTML = `<span class="pill">${esc(q.topic)}</span><h3 style="margin:16px 0">${esc(q.q)}</h3><div class="list">${q.o.map((o,i)=>`<button class="btn" style="justify-content:flex-start" data-o="${i}">${esc(o)}</button>`).join('')}</div><div id="qExp" style="margin-top:16px"></div>`;
-                    $$('[data-o]').forEach(b => b.onclick = () => {
-                        $$('[data-o]').forEach((x,i) => { x.disabled=true; if(i===q.a) { x.style.background='var(--success)'; x.style.color='white'; } else if(i===Number(b.dataset.o)) { x.style.background='var(--danger)'; x.style.color='white'; } });
+                    $$('[data-o]').forEach(b => b.onclick = () => {$$
+('[data-o]').forEach((x,i) => { x.disabled=true; if(i===q.a) { x.style.background='var(--success)'; x.style.color='white'; } else if(i===Number(b.dataset.o)) { x.style.background='var(--danger)'; x.style.color='white'; } });
                         if(Number(b.dataset.o)===q.a) score++; g.dataset.score = score;
                         $('#qExp').innerHTML = `${UIHelpers.notice(esc(q.e), true)}<button class="btn primary block" id="qNext">Siguiente</button>`;
                         $('#qNext').onclick = () => { g.dataset.idx = idx + 1; initQuiz(); };
