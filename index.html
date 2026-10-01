@@ -1312,8 +1312,10 @@
                                         
                                         const detailData = await detailRes.json();
                                         
+                                        // 1. Extraer datos (sin fallback inmediato)
                                         const def = detailData.definition;
-                                        const definition = def?.['@value'] || def?.value || detailData.description || 'No hay una descripción médica extendida disponible en la base de la OMS para este diagnóstico.';
+                                        const definitionRaw = def?.['@value'] || def?.value || detailData.description;
+                                        const hasDefinition = !!definitionRaw;
                                         
                                         let exclusionsHtml = '';
                                         if (detailData.exclusion && detailData.exclusion.length > 0) {
@@ -1343,13 +1345,33 @@
                                         btnFicha.href = browserUrl;
                                         btnFicha.classList.remove('hidden');
 
-                                        $('#cieDetailsBox').innerHTML = `
-                                            <p style="line-height: 1.5; font-size: 0.95em; color: var(--text-muted);">${esc(definition)}</p>
-                                            ${exclusionsHtml}
-                                            ${synonymsHtml}
-                                        `;
+                                        // 2. Construir el HTML en el orden deseado
+                                        let finalHtml = '';
+                                        
+                                        // Si hay definición, va arriba
+                                        if (hasDefinition) {
+                                            finalHtml += `<p style="line-height: 1.5; font-size: 0.95em; color: var(--text-muted);">${esc(definitionRaw)}</p>`;
+                                        }
+                                        
+                                        // Luego exclusiones y sinónimos
+                                        finalHtml += exclusionsHtml;
+                                        finalHtml += synonymsHtml;
+                                        
+                                        // Si NO hay definición, el aviso va abajo del todo, en un tono discreto
+                                        if (!hasDefinition) {
+                                            finalHtml += `
+                                                <div style="margin-top: 24px; padding: 12px; font-size: 0.85em; color: var(--text-muted); background: var(--bg-hover); border-radius: var(--radius-md); border: 1px solid var(--border-color); text-align: center;">
+                                                    No consta una descripción extendida para este diagnóstico. Puedes revisar la ficha oficial.
+                                                </div>`;
+                                        }
+
+                                        $('#cieDetailsBox').innerHTML = finalHtml;
+                                        
                                     } catch (e) {
-                                        $('#cieDetailsBox').innerHTML = `<p style="font-size:0.9rem; color:var(--text-muted); line-height:1.5;">No se pudo descargar la descripción clínica detallada. Verifica tu conexión.</p>`;
+                                        $('#cieDetailsBox').innerHTML = `
+                                            <div style="margin-top: 16px; padding: 12px; font-size: 0.85em; color: var(--text-muted); background: var(--bg-hover); border-radius: var(--radius-md); text-align: center;">
+                                                No se pudo descargar la descripción clínica detallada. Verifica tu conexión.
+                                            </div>`;
                                     }
                                 } else {
                                     $('#cieDetailsBox').innerHTML = `<p style="font-size:0.9rem; color:var(--text-muted); line-height:1.5;">ID de entidad no disponible en la respuesta de búsqueda.</p>`;
