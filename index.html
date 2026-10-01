@@ -1357,12 +1357,9 @@
                                         finalHtml += exclusionsHtml;
                                         finalHtml += synonymsHtml;
                                         
-                                        // Si NO hay definición, el aviso va abajo del todo, en un tono discreto
-                                        if (!hasDefinition) {
-                                            finalHtml += `
-                                                <div style="margin-top: 24px; padding: 12px; font-size: 0.85em; color: var(--text-muted); background: var(--bg-hover); border-radius: var(--radius-md); border: 1px solid var(--border-color); text-align: center;">
-                                                    No consta una descripción extendida para este diagnóstico. Puedes revisar la ficha oficial.
-                                                </div>`;
+                                        // Si no hay NINGÚN dato (ni definición, ni exclusiones, ni sinónimos), mostramos un texto mínimo.
+                                        if (!hasDefinition && !exclusionsHtml && !synonymsHtml) {
+                                            finalHtml = `<p class="muted small" style="text-align: center; margin-top: 16px;">Sin detalles clínicos adicionales en caché. Usa la ficha de la OMS.</p>`;
                                         }
 
                                         $('#cieDetailsBox').innerHTML = finalHtml;
