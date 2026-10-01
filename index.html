@@ -392,10 +392,13 @@
                     return data;
                 },
                 importAll: async (data) => {
+                    // Detecta si es un backup antiguo (tiene data.stores) o el formato nuevo
+                    const sourceData = data.stores ? data.stores : data;
+                    
                     for (const s of STORES) {
-                        if (data[s] && Array.isArray(data[s])) {
+                        if (sourceData[s] && Array.isArray(sourceData[s])) {
                             await NurseDB.clear(s);
-                            await NurseDB.bulkPut(s, data[s]);
+                            await NurseDB.bulkPut(s, sourceData[s]);
                         }
                     }
                 }
