@@ -984,8 +984,8 @@
                         <div id="cimaRes" style="margin-top:16px">${UIHelpers.noData('CIMA AEMPS', 'Busca por principio activo o marca.')}</div>`;
                 }
                 else if (view === 'medLocalDetail') {
-                    const m = await NurseDB.get('meds', data); if(!m) return; const c = m.clinical||{};
-                    const block = (title, text, danger=false) => text ? `<div class="clinical-section ${danger?'critical':''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
+                    const m = await NurseDB.get('meds', data); if (!m) return; const c = m.clinical || {};
+                    const block = (title, text, danger = false) => text ? `<div class="clinical-section ${danger ? 'critical' : ''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
                     html = `
                         <div class="card">
                             <div class="sub muted">Copia Offline · Registro ${m.registration}</div>
@@ -998,10 +998,9 @@
                         ${block('Para qué se usa (Indicaciones FT 4.1)', c.indicaciones)}
                         ${block('Alergias y Contraindicaciones (FT 4.3)', c.contraindications, true)}
                         ${block('Posología (FT 4.2)', c.posology)}
+                        ${block('Advertencias y Precauciones (FT 4.4)', c.advertencias, true)}
                         ${block('Interacciones (FT 4.5)', c.interactions)}
-                        ${block('Reacciones Adversas (FT 4.8)', c.adverse, true)}
-                        ${block('Manipulación (FT 6.6)', c.handling)}
-                        ${block('Conservación (FT 6.4)', c.storage)}
+                        ${block('Reacciones Adversas (FT 4.8)', c.adverse)}
                         ${!state.readOnlyMode ? `<button class="btn danger block" data-action="deleteMed" data-id="${m.id}" style="margin-top:24px">Eliminar del botiquín</button>` : ''}`;
                 }
                 else if (view === 'scanner') {
@@ -1311,15 +1310,37 @@
             return result;
         }
 
-        function extractCIMASection(sections, prefix) {
-            const flat = flattenCIMASections(sections);
-            // El manual especifica que el campo se llama 'seccion' y contiene números como "4.1"
-            const row = flat.find(s => String(s.seccion||'').startsWith(prefix));
-            if(!row) return '';
-            // El contenido viene en HTML según la documentación
-            const doc = new DOMParser().parseFromString(row.contenido, 'text/html');
-            doc.querySelectorAll('script,style,table').forEach(x=>x.remove()); // Quitamos tablas complejas para vista móvil
-            return (doc.body.textContent||'').replace(/\s+/g,' ').trim();
+        function extractCIMASection(fullText, sectionName) {
+            if (!fullText || typeof fullText !== 'string') return '';
+            
+            // Map de expresiones regulares para identificar el inicio y el fin de cada sección en el texto plano
+            const sections = {
+                'indicaciones': { start: /Indicaciones terapéuticas/i, end: /Posología y forma de administración|Contraindicaciones/i },
+                'posologia': { start: /Posología y forma de administración/i, end: /Contraindicaciones|Advertencias y precauciones/i },
+                'contraindicaciones': { start: /Contraindicaciones/i, end: /Advertencias y precauciones especiales de empleo|Interacción con otros/i },
+                'advertencias': { start: /Advertencias y precauciones especiales de empleo/i, end: /Interacción con otros medicamentos|Fertilidad, embarazo/i },
+                'interacciones': { start: /Interacción con otros medicamentos y otras formas de interacción/i, end: /Fertilidad, embarazo y lactancia|Efectos sobre la capacidad/i },
+                'embarazo': { start: /Fertilidad, embarazo y lactancia/i, end: /Efectos sobre la capacidad|Reacciones adversas/i },
+                'adversas': { start: /Reacciones adversas/i, end: /Sobredosis|PROPIEDADES FARMACOLÓGICAS/i },
+                'conservacion': { start: /Precauciones especiales de conservación/i, end: /Naturaleza y contenido del envase|Precauciones especiales de eliminación/i }
+            };
+
+            const config = sections[sectionName];
+            if (!config) return '';
+
+            const matchStart = fullText.search(config.start);
+            if (matchStart === -1) return '';
+
+            const textFromStart = fullText.substring(matchStart);
+            // Cortar el título de la sección
+            const lines = textFromStart.split('\n');
+            lines.shift(); // Elimina la primera línea (el título)
+            const cleanText = lines.join('\n');
+
+            const matchEnd = cleanText.search(config.end);
+            const rawContent = matchEnd !== -1 ? cleanText.substring(0, matchEnd) : cleanText;
+
+            return rawContent.replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
         }
 
         function attachICDAutocomplete(input, codeInput, validatedInput, statusBox, resultsBox) {
@@ -1376,33 +1397,32 @@
             
             else if (action === 'openMedRemote') {
                 const m = JSON.parse(actionBtn.dataset.json);
-                UI.alert('Cargando...', 'Descargando ficha técnica oficial...');
+                UI.alert('Cargando...', 'Descargando ficha técnica oficial desde CIMA...');
                 try {
-                    const bundle = await fetchCIMAData(m.registration); 
-                    const d = bundle.med||m.raw||{}; 
-                    const s = bundle.seg||[];
-                    
-                    const active = (d.principiosActivos||[]).map(p=>`${p.nombre} ${p.cantidad||''} ${p.unidad||''}`).join(', ') || m.active || 'No especificado';
-                    
-                    // Extraemos las secciones usando los códigos oficiales de la Ficha Técnica
-                    const info = { 
-                        indicaciones: extractCIMASection(s, '4.1'), // 4.1 Indicaciones terapéuticas
-                        posology: extractCIMASection(s,'4.2'), // 4.2 Posología y forma de administración
-                        incompatibilities: extractCIMASection(s,'6.2'), // 6.2 Incompatibilidades
-                        handling: extractCIMASection(s,'6.6'), // 6.6 Precauciones especiales de eliminación
-                        contraindications: extractCIMASection(s,'4.3'), // 4.3 Contraindicaciones
-                        warnings: extractCIMASection(s,'4.4'), // 4.4 Advertencias y precauciones especiales de empleo
-                        interactions: extractCIMASection(s,'4.5'), // 4.5 Interacción con otros medicamentos
-                        adverse: extractCIMASection(s,'4.8'), // 4.8 Reacciones adversas
-                        storage: extractCIMASection(s,'6.4') // 6.4 Precauciones especiales de conservación
+                    // CIMA devuelve el texto plano de la Ficha Técnica directamente en la respuesta
+                    const response = await fetch(`https://cima.aemps.es/cima/rest/docSegmentado/contenido/1?nregistro=${m.registration}`);
+                    const fullText = await response.json(); // Es un string único con todo el texto
+
+                    // Datos básicos del medicamento desde CIMA
+                    const medRes = await fetch(`https://cima.aemps.es/cima/rest/medicamento?nregistro=${m.registration}`).then(r => r.json()).catch(() => ({}));
+                    const active = (medRes.principiosActivos || []).map(p => `${p.nombre} ${p.cantidad || ''} ${p.unidad || ''}`).join(', ') || m.active || 'Ver ficha técnica';
+
+                    // Parseo del texto
+                    const info = {
+                        indicaciones: extractCIMASection(fullText, 'indicaciones'),
+                        contraindications: extractCIMASection(fullText, 'contraindicaciones'),
+                        posology: extractCIMASection(fullText, 'posologia'),
+                        advertencias: extractCIMASection(fullText, 'advertencias'),
+                        interactions: extractCIMASection(fullText, 'interacciones'),
+                        adverse: extractCIMASection(fullText, 'adversas')
                     };
-                    
-                    const block = (title, text, danger=false) => text ? `<div class="clinical-section ${danger?'critical':''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
-                    
+
+                    const block = (title, text, danger = false) => text ? `<div class="clinical-section ${danger ? 'critical' : ''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
+
                     const html = `
                         <div class="card">
                             <div class="sub muted">CIMA Registro ${m.registration}</div>
-                            <h3 style="font-size:1.3rem; margin-bottom:8px;">${esc(d.nombre||m.name)}</h3>
+                            <h3 style="font-size:1.3rem; margin-bottom:8px;">${esc(medRes.nombre || m.name)}</h3>
                             <div style="background: color-mix(in srgb, var(--primary) 10%, transparent); padding: 12px; border-radius: var(--radius-sm); border-left: 4px solid var(--primary);">
                                 <strong style="color: var(--primary); display:block; margin-bottom:4px;">Principio Activo:</strong>
                                 <span>${esc(active)}</span>
@@ -1411,25 +1431,37 @@
                         ${block('Para qué se usa (Indicaciones FT 4.1)', info.indicaciones)}
                         ${block('Alergias y Contraindicaciones (FT 4.3)', info.contraindications, true)}
                         ${block('Posología (FT 4.2)', info.posology)}
+                        ${block('Advertencias y Precauciones (FT 4.4)', info.advertencias, true)}
                         ${block('Interacciones (FT 4.5)', info.interactions)}
-                        ${block('Reacciones Adversas (FT 4.8)', info.adverse, true)}
-                        ${block('Manipulación (FT 6.6)', info.handling)}
-                        
+                        ${block('Reacciones Adversas (FT 4.8)', info.adverse)}
+
                         <div style="display:flex; gap:8px; margin-top:24px; position:sticky; bottom:0; padding-top:16px; background:var(--bg-card);">
                             <button class="btn" id="closeModCima" style="flex:1">Cerrar</button>
                             <button class="btn primary" id="saveMedLocal" style="flex:2">★ Guardar Offline</button>
                         </div>`;
-                    
-                    $('#modalTitle').textContent = 'Ficha Técnica AEMPS'; 
-                    $('#modalBody').innerHTML = html; 
+
+                    $('#modalTitle').textContent = 'Ficha Técnica AEMPS';
+                    $('#modalBody').innerHTML = html;
                     $('#modalActions').innerHTML = '';
-                    
+
                     $('#closeModCima').onclick = () => $('#modalOverlay').classList.remove('open');
                     $('#saveMedLocal').onclick = async () => {
-                        await NurseDB.put('meds', {id: String(m.registration), name: d.nombre||m.name, registration: m.registration, active, clinical: info, savedAt: new Date().toISOString()});
-                        $('#modalOverlay').classList.remove('open'); UI.toast('Guardado en Botiquín Local'); renderView();
+                        await NurseDB.put('meds', {
+                            id: String(m.registration),
+                            name: medRes.nombre || m.name,
+                            registration: m.registration,
+                            active,
+                            clinical: info,
+                            savedAt: new Date().toISOString()
+                        });
+                        $('#modalOverlay').classList.remove('open');
+                        UI.toast('Guardado en Botiquín Local');
+                        renderView();
                     };
-                } catch(e) { UI.alert('Error', 'No se pudo cargar la ficha desde CIMA. Comprueba tu conexión.'); }
+                } catch (e) {
+                    console.error("Error CIMA:", e);
+                    UI.alert('Error', 'No se pudo cargar la ficha técnica desde CIMA.');
+                }
             }
         });
 
