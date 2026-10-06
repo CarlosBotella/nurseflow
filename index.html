@@ -650,6 +650,9 @@
                 <div class="quick-action" data-action="goRoute" data-val="batea">
                     <div class="ico">▤</div><strong>La Batea</strong><small>Técnicas y material</small>
                 </div>
+                <div class="quick-action" data-action="openSlide" data-view="diseaseSearch">
+                    <div class="ico" style="color:white; background:var(--primary);">🩺</div><strong>Patologías</strong><small>Diccionario CIE-11</small>
+                </div>
                 <div class="quick-action" data-action="openSlide" data-view="medSearch">
                     <div class="ico">Rx</div><strong>CIMA</strong><small>Búsqueda de fármacos</small>
                 </div>
@@ -1009,6 +1012,76 @@
                         <div class="form-row"><input class="field" id="cimaQ" placeholder="Ej. Furosemida" style="margin:0"><button class="btn primary" id="cimaBtn">Buscar en CIMA</button></div>
                         <div id="cimaRes" style="margin-top:16px">${UIHelpers.noData('CIMA AEMPS', 'Busca por principio activo o marca.')}</div>`;
                 }
+                else if (view === 'diseaseSearch') {
+                    html = `
+                        ${UIHelpers.notice('Conectado a la base de datos oficial CIE-11 de la OMS.', true)}
+                        <div class="form-row" style="display:flex; gap:8px;">
+                            <input class="field" id="icdQ" placeholder="Ej. Insuficiencia cardíaca..." style="margin:0; flex:1;">
+                            <button class="btn primary" id="icdBtn" style="min-width:80px;">Buscar</button>
+                        </div>
+                        <div id="icdRes" style="margin-top:16px">
+                            ${UIHelpers.noData('Guía de Patologías', 'Busca cualquier enfermedad, síndrome o trastorno.')}
+                        </div>`;
+                }
+                else if (view === 'diseaseDetail') {
+                    // Extraemos el ID final de la URL de la OMS
+                    const entityId = String(data).split('/').pop(); 
+                    html = `<div class="empty-state">Descargando datos clínicos de la OMS...</div>`;
+                    
+                    try {
+                        
+                        const workerUrl = `https://nurseflow-api.carlosb-n.workers.dev/icd/entity/${entityId}`;
+                        const r = await fetch(workerUrl, { headers: { 'Accept-Language': 'es' } });
+                        if (!r.ok) throw new Error('No encontrado');
+                        const d = await r.json();
+                        
+                        const title = d.title?.['@value'] || 'Patología Desconocida';
+                        const definition = d.definition?.['@value'] || 'No hay definición oficial disponible en la OMS para esta entidad.';
+                        const synonyms = (d.synonym || []).map(s => s.label?.['@value']).filter(Boolean);
+                        const exclusions = (d.exclusion || []).map(e => e.label?.['@value']).filter(Boolean);
+                        
+                        // Buscamos si la enfermera ya había guardado notas para esta enfermedad
+                        const localNote = await NurseDB.get('pae', entityId) || { notes: '' };
+                        
+                        const block = (t, txt) => txt ? `<div class="clinical-section"><h3>${t}</h3><p>${esc(txt)}</p></div>` : '';
+                        
+                        html = `
+                            <div class="card">
+                                <div class="sub muted">CIE-11 Base OMS</div>
+                                <h3 style="font-size:1.3rem; margin-top:4px; margin-bottom:8px;">${esc(title)}</h3>
+                                <span class="pill primary">${esc(d.code || 'Sin código')}</span>
+                            </div>
+                            
+                            ${block('Definición Médica', definition)}
+                            
+                            ${synonyms.length ? `
+                            <div class="clinical-section">
+                                <h3>También conocido como</h3>
+                                <div class="tag-cloud">
+                                    ${synonyms.slice(0, 8).map(s => `<span class="tag">${esc(s)}</span>`).join('')}
+                                    ${synonyms.length > 8 ? '<span class="tag">...</span>' : ''}
+                                </div>
+                            </div>` : ''}
+                            
+                            ${exclusions.length ? `
+                            <div class="clinical-section critical">
+                                <h3>Excluye (Diagnóstico Diferencial)</h3>
+                                <ul style="padding-left:20px; color:var(--text-muted); font-size:0.9rem;">
+                                    ${exclusions.map(e => `<li>${esc(e)}</li>`).join('')}
+                                </ul>
+                            </div>` : ''}
+                            
+                            <div class="card" style="border-left: 4px solid var(--warning); margin-top:24px;">
+                                <h3 style="margin-bottom:8px;">Enfoque de Enfermería (Tus notas)</h3>
+                                <p class="muted small" style="margin-bottom:12px;">Escribe aquí los diagnósticos NANDA, intervenciones (NIC) o cuidados clave asociados a este diagnóstico médico.</p>
+                                <textarea class="field" id="nursingNotes" placeholder="Ej. Riesgo de infección, vigilar constantes c/4h, cabecero a 45º..." style="min-height:120px;">${esc(localNote.notes)}</textarea>
+                                ${!state.readOnlyMode ? `<button class="btn primary block" id="saveNursingNotes" data-id="${esc(entityId)}">Guardar Cuidados</button>` : ''}
+                            </div>
+                        `;
+                    } catch (err) {
+                        html = UIHelpers.notice('Error al cargar la entidad. Comprueba la conexión.', false, true);
+                    }
+                }
                 else if (view === 'medLocalDetail') {
                     const m = await NurseDB.get('meds', data); if (!m) return; const c = m.clinical || {};
                     const block = (title, text, danger = false) => text ? `<div class="clinical-section ${danger ? 'critical' : ''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
@@ -1151,6 +1224,46 @@
                     await NurseDB.put('schedule', {id: data||uid(), title: t, day: +f.get('day'), room: f.get('room').trim(), start: f.get('start'), end: f.get('end')});
                     state.slideOverOpen = false; renderView(); UI.toast('Clase guardada');
                 };
+            }
+            if(view === 'diseaseSearch') {
+                const doSearch = async () => {
+                    const q = $('#icdQ').value.trim();
+                    if(q.length < 3) return;
+                    const box = $('#icdRes');
+                    box.innerHTML = '<div class="empty-state">Buscando en CIE-11...</div>';
+                    try {
+                        const url = `https://nurseflow-api.carlosb-n.workers.dev/icd/search?q=${encodeURIComponent(q)}&includeKeywordMatches=true`;
+                        const r = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+                        const data = await r.json();
+                        const items = data.destinationEntities || [];
+                        
+                        box.innerHTML = `<div class="list">${items.slice(0,15).map(x => {
+                            // Limpiamos los <em> que devuelve la OMS para la vista de lista
+                            const title = x.title.replace(/<[^>]+>/g, '');
+                            return UIHelpers.listRow({
+                                title: title,
+                                sub: `Código: ${x.theCode || 'S/C'}`,
+                                icon: '🩺',
+                                action: `data-action="openSlide" data-view="diseaseDetail" data-id="${x.id}"`
+                            });
+                        }).join('') || UIHelpers.noData('Sin resultados')}</div>`;
+                    } catch(e) {
+                        box.innerHTML = UIHelpers.notice('Error conectando a la API.', false, true);
+                    }
+                };
+                
+                $('#icdBtn').onclick = doSearch;
+                $('#icdQ').onkeydown = e => { if(e.key === 'Enter') doSearch(); };
+            }
+            
+            if(view === 'diseaseDetail') {
+                $('#saveNursingNotes')?.addEventListener('click', async (e) => {
+                    const id = e.target.dataset.id;
+                    const notes = $('#nursingNotes').value;
+                    // Usamos la tabla 'pae' que ya tenías inicializada en tu BD
+                    await NurseDB.put('pae', { id: id, notes: notes, updatedAt: new Date().toISOString() });
+                    UI.toast('Plan de cuidados guardado');
+                });
             }
             if(view === 'exceptions') $('#exceptionForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Excepción guardada'); };
             if(view === 'tasks') {
@@ -1371,27 +1484,110 @@
 
         function attachICDAutocomplete(input, codeInput, validatedInput, statusBox, resultsBox) {
             let timer = null;
+            
+            // Función auxiliar para limpiar el HTML que devuelve la OMS cuando lo pasamos al input
+            const stripHtml = (html) => {
+                const tmp = document.createElement('DIV');
+                tmp.innerHTML = html;
+                return tmp.textContent || tmp.innerText || '';
+            };
+
             input.addEventListener('input', () => {
-                codeInput.value = ''; validatedInput.value = 'false';
-                statusBox.innerHTML = '<span class="muted">Código no verificado</span>';
-                clearTimeout(timer); const q = input.value.trim();
-                if(q.length < 3) { resultsBox.style.display = 'none'; return; }
+                codeInput.value = ''; 
+                validatedInput.value = 'false';
+                statusBox.innerHTML = '<span class="muted">Buscando en la base de la OMS...</span>';
+                
+                clearTimeout(timer); 
+                const q = input.value.trim();
+                
+                if(q.length < 3) { 
+                    resultsBox.style.display = 'none'; 
+                    statusBox.innerHTML = '<span class="muted">Escribe al menos 3 letras para buscar</span>';
+                    return; 
+                }
+                
                 timer = setTimeout(async () => {
                     try {
-                        const r = await fetch(`https://id.who.int/icd/release/11/mks/search?q=${encodeURIComponent(q)}&includeKeywordMatches=true`, {headers: {'Accept-Language': 'es'}}).catch(()=>null);
-                        // Fallback a simulación o proxy público si CORS bloquea directo en navegador
-                        items = [{code: 'CA20', title: q, foundationUri: 'verified'}];
-                        resultsBox.innerHTML = `<button type="button" class="list-row clickable" data-icdcode="CA20" data-icdtitle="${esc(q)}"><span class="pill">CIE-11</span><div class="grow"><strong>${esc(q)} (Verificado OMS)</strong></div></button>`;
-                        resultsBox.style.display = 'block';
-                        resultsBox.querySelectorAll('[data-icdcode]').forEach(b => b.onclick = () => {
-                            input.value = b.dataset.icdtitle;
-                            codeInput.value = b.dataset.icdcode;
-                            validatedInput.value = 'true';
-                            statusBox.innerHTML = '<span style="color:var(--success)">✓ Código verificado OMS</span>';
-                            resultsBox.style.display = 'none';
+                        // Cambia esto por la URL de tu Cloudflare Worker
+                        const workerUrl = `https://nurseflow-api.carlosb-n.workers.dev/icd/search?q=${encodeURIComponent(q)}&includeKeywordMatches=true`;
+                        
+                        // Si usas la validación por secreto, añade la cabecera aquí:
+                        // 'X-Admin-Secret': 'TU_SECRETO' (solo para pruebas en local, NO en producción)
+                        const r = await fetch(workerUrl, { headers: { 'Accept-Language': 'es' } });
+                        if (!r.ok) throw new Error('Error en la petición');
+                        
+                        const data = await r.json();
+                        const items = data.destinationEntities || [];
+                        
+                        if (items.length === 0) {
+                            resultsBox.innerHTML = '<div class="empty-state small" style="padding:16px 0;">No se encontraron diagnósticos en CIE-11</div>';
+                            resultsBox.style.display = 'block';
+                            statusBox.innerHTML = '<span class="muted">Código no encontrado</span>';
+                            return;
+                        }
+
+                        let html = '';
+                        items.slice(0, 10).forEach(item => {
+                            const code = item.theCode || 'S/C';
+                            // La OMS devuelve el título con <em> para resaltar la coincidencia. Lo mantenemos para el menú.
+                            const richTitle = item.title || 'Diagnóstico sin título';
+                            const cleanTitle = stripHtml(richTitle); 
+                            
+                            // Extraemos contexto clínico: Si coincidió por un sinónimo (ej. "Neumonía atípica")
+                            // lo mostramos para que el alumno entienda la relación.
+                            let clinicalContext = '';
+                            if (item.matchingPVs && item.matchingPVs.length > 0) {
+                                const synonymMatch = item.matchingPVs.find(pv => pv.propertyId === 'Synonym' || pv.propertyId === 'TitleOfOtherEntity');
+                                if (synonymMatch) {
+                                    const cleanSynonym = stripHtml(synonymMatch.label);
+                                    // Solo lo mostramos si el sinónimo es diferente al título principal
+                                    if (cleanSynonym.toLowerCase() !== cleanTitle.toLowerCase()) {
+                                        clinicalContext = `<div class="sub" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">↳ Incluye: <i>${synonymMatch.label}</i></div>`;
+                                    }
+                                }
+                            }
+
+                            html += `
+                                <button type="button" class="list-row clickable" data-icdcode="${esc(code)}" data-icdtitle="${esc(cleanTitle)}" style="text-align:left; padding: 10px; height: auto; min-height: 54px; align-items: flex-start;">
+                                    <span class="pill primary" style="min-width:65px; text-align:center; font-weight:bold; font-size:0.8rem; margin-top:2px;">${esc(code)}</span>
+                                    <div class="grow" style="margin-left:12px; line-height:1.3; min-width:0;">
+                                        <strong style="font-size:0.9rem; display:block; white-space:normal; word-wrap:break-word;">${richTitle}</strong>
+                                        ${clinicalContext}
+                                    </div>
+                                </button>
+                            `;
                         });
-                    } catch(e) {}
-                }, 400);
+                        
+                        resultsBox.innerHTML = html;
+                        resultsBox.style.display = 'block';
+                        statusBox.innerHTML = '<span class="muted">Selecciona el diagnóstico clínico más preciso:</span>';
+                        
+                        // Añadimos color de resaltado a las etiquetas <em> que devuelve la OMS
+                        resultsBox.querySelectorAll('em.found').forEach(em => {
+                            em.style.fontStyle = 'normal';
+                            em.style.backgroundColor = 'color-mix(in srgb, var(--primary) 20%, transparent)';
+                            em.style.color = 'var(--primary)';
+                            em.style.padding = '0 2px';
+                            em.style.borderRadius = '2px';
+                        });
+
+                        // Evento al hacer clic en un resultado
+                        resultsBox.querySelectorAll('[data-icdcode]').forEach(b => {
+                            b.onclick = () => {
+                                input.value = b.dataset.icdtitle;
+                                codeInput.value = b.dataset.icdcode;
+                                validatedInput.value = 'true';
+                                statusBox.innerHTML = '<span style="color:var(--success)">✓ Código validado: <strong>' + esc(b.dataset.icdcode) + '</strong></span>';
+                                resultsBox.style.display = 'none';
+                            };
+                        });
+                        
+                    } catch(e) {
+                        resultsBox.innerHTML = `<div class="notice danger">Error al conectar con el servidor CIE-11.</div>`;
+                        resultsBox.style.display = 'block';
+                        statusBox.innerHTML = '<span class="muted">Sin conexión</span>';
+                    }
+                }, 400); 
             });
         }
 
