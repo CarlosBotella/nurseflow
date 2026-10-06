@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#0d9488">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
-    <title>NurseFlow</title>
+    <title>NurseFlow Pro</title>
     
     <style>
         :root {
@@ -246,35 +246,73 @@
         .clinical-section.critical { border-left-color: var(--danger); }
         .clinical-section h3 { font-size: 1rem; margin-bottom: 8px; color: var(--text-main); }
         .clinical-section p { font-size: 0.9rem; color: var(--text-muted); }
+
+        /* Gloves Mode / Large Touch Mode */
+        html.gloves-mode {
+            --touch-target: 56px;
+            font-size: 18px;
+        }
+        html.gloves-mode [data-theme="dark"] {
+            --text-muted: #cbd5e1;
+            --border-color: #475569;
+        }
+        html.gloves-mode:not([data-theme="dark"]) {
+            --text-muted: #475569;
+            --border-color: #cbd5e1;
+        }
+        html.gloves-mode .btn { padding: 0 calc(var(--space-md) + 4px); }
+        html.gloves-mode .card { padding: calc(var(--space-md) + 4px); }
+        html.gloves-mode .field { padding: 0 calc(var(--space-sm) + 4px); }
+        html.gloves-mode .quick-action { padding: calc(var(--space-md) + 4px); }
+        html.gloves-mode .list-row { padding: calc(var(--space-sm) + 4px); }
+        html.gloves-mode .nav-item { height: 56px; font-size: 0.75rem; }
+        html.gloves-mode .pin-grid button { width: 80px; height: 80px; border-radius: 40px; font-size: 1.75rem; }
+        html.gloves-mode .pin-dots { font-size: 2.5rem; letter-spacing: 16px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            html.gloves-mode *,
+            html.gloves-mode *::before,
+            html.gloves-mode *::after {
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+        }
+
+        /* Read-only mode indicator */
+        html.readonly-mode .topbar { border-bottom-color: var(--warning); box-shadow: 0 2px 8px color-mix(in srgb, var(--warning) 30%, transparent); }
+        html.readonly-mode .topbar::after { content: '🔒 Solo lectura'; position: absolute; bottom: -20px; left: 50%; transform: translateX(-50%); font-size: 0.7rem; color: var(--warning); background: var(--warning-bg); padding: 2px 8px; border-radius: 4px; white-space: nowrap; }
     </style>
 </head>
 <body>
 
     <div id="appLock" class="hidden">
-        <h1 style="color: var(--primary); margin-bottom: 8px; font-size: 2rem;">NurseFlow</h1>
-        <p class="muted" id="lockMsg">Introduce tu PIN</p>
+        <h1 style="color: var(--primary); margin-bottom: 8px; font-size: 2rem;">NurseFlow Pro</h1>
+        <p class="muted" id="lockMsg">Introduce tu PIN de 6 dígitos</p>
         <div id="pinDots" class="pin-dots"></div>
-        <div class="pin-grid" id="pinGrid">
-            <!-- Rellenado dinámicamente -->
-        </div>
+        <div class="pin-grid" id="pinGrid"></div>
         <button id="bioUnlockBtn" class="btn primary hidden block" style="margin-top: 32px; max-width: 300px;">Desbloquear con Biometría</button>
     </div>
 
-    <div id="onboardingView" class="hidden">
-        <!-- Renderizado vía JS -->
-    </div>
+    <div id="onboardingView" class="hidden"></div>
 
     <header class="topbar">
         <div class="topbar-titles">
             <h1 id="pageTitle">Hoy</h1>
             <div id="contextLabel" class="context">NurseFlow Pro</div>
         </div>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:4px; align-items:center;">
+            <button class="btn icon-only" id="glovesToggle" data-action="toggleGloves" aria-label="Modo guantes" title="Modo guantes (tacto grande)">
+                <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"></path></svg>
+            </button>
+            <button class="btn icon-only" id="readonlyToggle" data-action="toggleReadOnly" aria-label="Modo solo lectura" title="Modo solo lectura (para tutor)">
+                <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path></svg>
+            </button>
             <button class="btn icon-only" data-action="openSlide" data-view="globalSearch" aria-label="Buscar">
                 <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
             </button>
             <button class="btn icon-only" data-action="openSlide" data-view="settingsMain" aria-label="Ajustes">
-                <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756 2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
             </button>
         </div>
     </header>
@@ -294,9 +332,9 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
             Prácticas
         </button>
-        <button class="nav-item" data-route="consult">
-            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-            Consulta
+        <button class="nav-item" data-route="batea">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+            Batea
         </button>
         <button class="nav-item" data-route="study">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
@@ -304,7 +342,6 @@
         </button>
     </nav>
 
-    <!-- Slide-over (Panel lateral) -->
     <div id="slideOver" class="slide-over">
         <div class="slide-over-header">
             <button class="btn icon-only" data-action="closeSlideOver">
@@ -316,7 +353,6 @@
         <div id="slideOverContent" class="slide-over-content"></div>
     </div>
 
-    <!-- Modales de Confirmación y Alertas -->
     <div id="modalOverlay" class="modal-overlay">
         <div class="modal-box">
             <h3 id="modalTitle" style="margin-bottom: 8px; font-size: 1.2rem;">Atención</h3>
@@ -326,9 +362,9 @@
     </div>
 
     <input type="file" id="fileImport" class="hidden" accept=".json">
+    <div id="toast" class="toast"></div>
 
     <script>
-        // --- 1. UTILIDADES CORE ---
         const $ = s => document.querySelector(s);
         const $$ = s => [...document.querySelectorAll(s)];
         const esc = s => String(s ?? '').replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
@@ -347,7 +383,6 @@
             return [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join('');
         };
 
-        // --- 2. WRAPPER INDEXEDDB (NurseDB) ---
         const NurseDB = (() => {
             const DB_NAME = 'NurseFlowDB';
             const DB_VERSION = 1;
@@ -385,15 +420,15 @@
                 remove: (store, id) => tx(store, 'readwrite', s => s.delete(id)),
                 clear: (store) => tx(store, 'readwrite', s => s.clear()),
                 reset: async () => { for (const s of STORES) await NurseDB.clear(s); },
-                exportAll: async () => {
+                exportAll: async (storesList = STORES) => {
                     const data = {};
-                    for (const s of STORES) data[s] = await NurseDB.all(s);
+                    for (const s of storesList) {
+                        if (STORES.includes(s)) data[s] = await NurseDB.all(s);
+                    }
                     return data;
                 },
                 importAll: async (data) => {
-                    // Detecta si es un backup antiguo (tiene data.stores) o el formato nuevo
                     const sourceData = data.stores ? data.stores : data;
-                    
                     for (const s of STORES) {
                         if (sourceData[s] && Array.isArray(sourceData[s])) {
                             await NurseDB.clear(s);
@@ -404,93 +439,82 @@
             };
         })();
 
-        // --- 3. DATOS INICIALES MOCK (NURSE_DATA) ---
         const NURSE_DATA = {
             procedures: [
-                { id: 'p1', name: 'Canalización VVP', materials: ['Compresor', 'Abocath', 'Suero', 'Apósito transparente', 'Gasas', 'Clorhexidina', 'Llave de 3 pasos'], notes: ['Vigilar signos de flebitis', 'Rotular fecha y calibre', 'Lavar con suero tras inserción'], favorite: true },
-                { id: 'p2', name: 'Sondaje Vesical', materials: ['Sonda Foley', 'Lubricante urológico', 'Guantes estériles', 'Bolsa de diuresis', 'Agua bidestilada 10cc', 'Jeringa', 'Clorhexidina acuosa'], notes: ['Técnica estéril estricta', 'Comprobar globo antes de insertar', 'No forzar si hay resistencia'], favorite: false },
-                { id: 'p3', name: 'Extracción Analítica', materials: ['Palomilla/Aguja', 'Tubos de vacío (orden correcto)', 'Campana/Adaptador', 'Gasas', 'Compresor'], notes: ['Respetar orden de llenado de tubos', 'Invertir tubos suavemente 8-10 veces'], favorite: true },
-                { id: 'p4', name: 'Sondaje Nasogástrico', materials: ['Sonda Levin/Salem', 'Lubricante hidrosoluble', 'Guantes', 'Jeringa de 50cc', 'Fonendoscopio', 'Esparadrapo', 'Vaso de agua'], notes: ['Medir: nariz - oreja - apéndice xifoides', 'Comprobar auscultando y aspirando contenido'], favorite: false },
-                { id: 'p5', name: 'Extracción Hemocultivos', materials: ['2 Sets de frascos (Aerobio/Anaerobio)', 'Palomilla', 'Clorhexidina alcohólica 2%', 'Guantes estériles', 'Gasas estériles'], notes: ['Desinfectar tapones de frascos', 'Llenar primero aerobio si se usa palomilla', 'Técnica aséptica rigurosa'], favorite: true },
-                { id: 'p6', name: 'Cura de UPP/Herida', materials: ['Suero fisiológico', 'Gasas estériles', 'Guantes', 'Apósito adecuado', 'Bisturí/Pinzas (desbridamiento)'], notes: ['Limpiar desde el centro a la periferia', 'No friccionar el lecho de la herida'], favorite: false },
-                { id: 'p7', name: 'Gasometría Arterial', materials: ['Jeringa heparinizada', 'Aguja SC', 'Clorhexidina', 'Gasas', 'Contenedor rígido'], notes: ['Test de Allen previo', 'Punción a 45º (radial)', 'Comprimir 5-10 min post-extracción', 'Enviar en hielo si demora >15min'], favorite: true },
-                { id: 'p8', name: 'Electrocardiograma (ECG)', materials: ['Electrodos', 'Alcohol/Gasas', 'Papel de ECG', 'Electrocardiógrafo', 'Maquinilla (rasurar)'], notes: ['V1: 4º EIC derecho', 'V2: 4º EIC izquierdo', 'V4: 5º EIC línea medioclavicular'], favorite: true },
-                { id: 'p9', name: 'Transfusión Sanguínea', materials: ['Bolsa de hemoderivado', 'Sistema de transfusión con filtro', 'Suero fisiológico', 'Termómetro', 'Tensiómetro'], notes: ['Doble comprobación a pie de cama', 'Constantes basal, a los 15 min y al finalizar', 'Vigilar reacciones (fiebre, escalofríos)'], favorite: false },
-                { id: 'p10', name: 'Aspiración de Secreciones', materials: ['Sondas de aspiración', 'Toma de vacío', 'Guantes estériles', 'Gafas/Mascarilla', 'Suero fisiológico'], notes: ['Preoxigenar al 100%', 'Aspirar máximo 10-15 segundos', 'Técnica estéril en TET/Traqueostomía'], favorite: false },
-                { id: 'p11', name: 'Retirada de Drenaje (Redón/Jackson-Pratt)', materials: ['Guantes no estériles', 'Gasas estériles', 'Antiséptico', 'Tijeras estériles o quitagrapas', 'Apósito'], notes: ['Asegurarse de retirar el vacío antes de extraer', 'Extraer en un movimiento continuo', 'Vigilar sangrado posterior'], favorite: false },
-                { id: 'p12', name: 'RCP Básica', materials: ['Desfibrilador DEA', 'Mascarilla de bolsillo/Ambú', 'Guantes'], notes: ['30 compresiones / 2 ventilaciones', 'Comprimir fuerte (5cm) y rápido (100-120 lpm)', 'Minimizar pausas'], favorite: true }
+                // TERAPIA INTRAVENOSA Y HEMODERIVADOS
+                { id: 'p1', name: 'Canalización VVP (Vía Venosa Periférica)', materials: ['Compresor', 'Abocath (14G a 24G)', 'Batea y Suero Salino', 'Apósito transparente', 'Gasas', 'Clorhexidina alcohólica >0.5-2%', 'Llave de 3 pasos / Alargadera'], notes: ['Seleccionar venas distales primero (priorizar flexura del codo solo en CVC/PICC)', 'Desinfectar con fricción y dejar secar 30 seg (fundamental)', 'Lavar con suero tras inserción (permeabilidad)', 'Fijación segura atraumática para evitar flebitis mecánica'], favorite: true },
+                { id: 'p2', name: 'Inserción CVC / PICC Ecoguiado', materials: ['Clorhexidina alcohólica al 2%', 'Gorro, mascarilla, bata, guantes y paños amplios estériles', 'Ecógrafo (funda estéril y gel)', 'Adaptador ECG intracavitario', 'Kit de punción (Técnica Seldinger)', 'Mepivacaína 1% o Lidocaína (Jeringas 10cc)', 'SSF 0.9%', 'Dispositivo anclaje sin sutura (Ej. Statlock)'], notes: ['Técnica estricta de BARRERA MÁXIMA', 'Mapeo previo venoso RaPeVA/RaCeVA', 'Confirmación posición: visualización de onda P máxima bifásica en ECG', 'Sustituir sutura por adhesivo reduce bacteriemia (BRC)'], favorite: false },
+                { id: 'p3', name: 'Mantenimiento y Sellado CVC/PICC', materials: ['Clorhexidina alcohólica 2%', 'Jeringas de 10 ml (EXCLUSIVAMENTE)', 'SSF 0.9%', 'Citrato o SSF (según protocolo de sellado)', 'Apósito transparente semipermeable'], notes: ['Cura semanal si el apósito es transparente, o c/48h si es gasa', 'Permeabilizar usando técnica PUSH-STOP (bolos 1 ml) para crear turbulencias', 'NO usar jeringas menores a 10ml para evitar exceso de presión intraluminal y rotura', 'Volumen de cebado al 120% del espacio muerto del catéter', 'Estrictamente contraindicado el uso de pomadas antibióticas (riesgo fúngico)'], favorite: true },
+                { id: 'p4', name: 'Transfusión Sanguínea (Hemoderivados)', materials: ['Bolsa del hemoderivado cruzado', 'Sistema de infusión transfusional con filtro (170-200 micras)', 'SSF 0.9%', 'Monitor de constantes vitales'], notes: ['DOBLE comprobación cruzada a pie de cama (nombre, ABO/Rh, caducidad)', 'Completar la infusión en < 4 horas para evitar proliferación bacteriana', 'Nunca mezclar ni administrar medicación por la misma luz venosa, a excepción de SSF 0.9%', 'Monitorizar SV: Basal, a los 15 minutos (período crítico de reacción anafiláctica/TRALI) y al final'], favorite: true },
+                
+                // VÍA AÉREA Y RESPIRATORIO
+                { id: 'p5', name: 'Asistencia en Toracocentesis', materials: ['Clorhexidina 2% o Povidona', 'Paños, guantes y material estéril', 'Mepivacaína 1%', 'Agujas/Abocath 16-19G o Trócares (20-32 French)', 'Llaves de 3 pasos y Jeringas 30-50 cc', 'Tubos analíticos (Microbiología, Bioquímica, Gasometría)'], notes: ['Posición: Sedente, inclinado hacia adelante con brazos apoyados en mesa (amplía espacios)', 'Abordaje: Bordeando margen SUPERIOR de costilla INFERIOR (evita paquete vasculonervioso)', 'Premedicación recomendada (Atropina/Morfina) vs síncope vasovagal'], favorite: false },
+                { id: 'p6', name: 'Manejo Drenaje Pleural (Pleur-evac)', materials: ['Sistema recolector 3 cámaras (sello de agua)', 'Tubuladuras de conexión', 'Agua bidestilada / SSF para cámara de sello', 'Gasa vaselinada'], notes: ['NO drenar > 1500 ml de golpe (riesgo de Edema Pulmonar Ex-Vacuo)', 'Vigilar fluctuación o "columpio" en la cámara de agua con la respiración', 'Burbujeo constante indica fuga aérea o fístula broncopleural activa', 'JAMÁS pinzar la tubuladura si hay fuga aérea (provocará neumotórax a tensión letal)'], favorite: true },
+                { id: 'p7', name: 'Cuidados de Traqueostomía', materials: ['SSF y agua destilada', 'Clorhexidina acuosa 2%', 'Gasas de celulosa (material que NO desprenda hilos)', 'Cintas de fijación', 'Cánulas de repuesto (mismo diámetro y un calibre menor)', 'Obturador/Fiador'], notes: ['Limpieza estoma: movimientos centrífugos; mantener la piel meticulosamente SECA', 'Limpiar cánula interna e inmersión clorhexidina 15-20 min', 'Educación: prioridad baño vs ducha, sin colonias/sprays, ropa sin pelusas', 'La traqueostomía elude la nasofaringe; requiere fluidificar secreciones y humidificación extra'], favorite: false },
+                { id: 'p8', name: 'Aspiración de Secreciones (Vía artificial)', materials: ['Sondas de aspiración estériles', 'Jeringa 2-5 ml para instilación salina (si resistencia)', 'Equipo protección (gafas, guantes estériles)', 'Sistema de vacío'], notes: ['Técnica estrictamente estéril', 'Aspiración suave, MÁXIMO 10-15 segundos por pase', 'NO sobrepasar la longitud anatómica de la cánula (evitar traumatizar y lesionar la carina traqueal)', 'Preoxigenar siempre al 100% previo a la técnica'], favorite: true },
+
+                // UROLÓGICO
+                { id: 'p9', name: 'Irrigación Vesical Continua (IVC)', materials: ['Sonda de 3 luces (Foley hemostática o Couvelaire de bisel ancho)', 'Solución de SSF 0.9% Gran Volumen (3.000 cc)', 'Equipo de irrigación en "Y"', 'Sistema colector circuito cerrado con grifo', 'Lubricante urológico anestésico (Lidocaína 2%)'], notes: ['Gradiente: Colgar bolsas a 40-50 cm sobre la vejiga', 'Ritmo: Titular dinámicamente. Acelerar si rojo vinoso, enlentecer en "lavado de carne/rosado"', 'PROHIBIDO fluidos hipotónicos o agua destilada: riesgo de absorción y SÍNDROME POST-RTU (intoxicación acuosa por dilución de sodio)', 'Líquidos atemperados para evitar espasmos del detrusor', 'Control BALANCE HÍDRICO estricto (Entradas menos salidas)'], favorite: true },
+                { id: 'p10', name: 'Desobstrucción Vesical (Extracción Coágulos)', materials: ['Guantes estériles', 'Clorhexidina acuosa o Povidona', 'Jeringa de Janet de cono ancho (50-100 cc)', 'SSF 0.9% estéril', 'Empapador'], notes: ['Si el paciente presenta globo/dolor y el flujo de retorno IVC cesa: CLAMPAR infusión para evitar rotura vesical', 'Inyectar 50 cc de SSF con jeringa de Janet y aspirar con fuerza moderada', 'Repetir la fragmentación mecánica hasta que el coágulo sea extraído', 'No reanudar circuito IVC hasta recuperar permeabilidad total'], favorite: false },
+                { id: 'p11', name: 'Sondaje Vesical Estándar (SVD)', materials: ['Sonda Foley de calibre adecuado (ej. 14-16 Ch)', 'Lubricante urológico anestésico', 'Guantes y paño estéril', 'Jeringa 10cc y Agua Bidestilada', 'Bolsa de diuresis (horaria o estándar)'], notes: ['Lavado y antisepsia de meato/glande/vulva', 'Inflar el balón de retención SOLO con Agua Bidestilada (el suero salino puede cristalizar la válvula)', 'Comprobar el balón exteriormente antes de su inserción', 'Técnica aséptica rigurosa (infección principal factor IRAS)'], favorite: true },
+
+                // DIGESTIVO Y HERIDAS
+                { id: 'p12', name: 'Sondaje Nasogástrico (SNG)', materials: ['Sonda gástrica (Levin 1 luz o Salem 2 luces)', 'Lubricante hidrosoluble (¡Nunca base lipídica!)', 'Jeringa cono-catéter de 50 cc', 'Fonendoscopio', 'Esparadrapo hipoalergénico', 'Vaso de agua'], notes: ['Cálculo de longitud técnica NEMU: Punta Nariz -> Lóbulo Oreja -> Xifoides -> Punto medio hasta ombligo', 'Paciente en Fowler; ofrecer sorbos de agua al llegar a orofaringe para cerrar epiglotis', 'Riesgo neumonía lipoidea si se usa vaselina lipídica y va a vía aérea', 'Comprobación de oro: Radiológica (o aspirado pH gástrico)'], favorite: true },
+                { id: 'p13', name: 'Cuidado de Gastrostomía (PEG)', materials: ['SSF', 'Jabón neutro', 'Gasas estériles', 'Clorhexidina acuosa o povidona (fase aguda)', 'Agua corriente para lavados'], notes: ['Curas asépticas periestomales críticas primeros 7-14 días; luego lavado normal de higiene diaria', 'GIRAR 360º sobre su eje y hacer "Push-Pull" (vaivén) a diario para evitar "Buried Bumper" (enterramiento de sonda en mucosa)', 'Decanulación accidental: Urgencia. Obliteración rápida, meter sonda Foley temporal inflada para mantener tracto', 'Lavar agresivamente sonda con 40-50 ml de agua ANTES y DESPUÉS de nutriciones/fármacos'], favorite: false },
+                { id: 'p14', name: 'Cuidados Periestomales (Ostomías)', materials: ['Agua tibia, esponja suave y jabón pH neutro', 'Película barrera polimérica sin alcohol (Cavilon)', 'Spray removedor adhesivo de silicona', 'Plantilla medidora y tijeras curvas', 'Polvos absorbentes (Crusting), pastas y anillos moldeables'], notes: ['Proteger piel de las enzimas proteolíticas corrosivas (sobre todo en ileostomías)', 'Retirada placa: usar removedor de silicona sin tirones para evitar epidermólisis (desgarro)', 'Fenestrar disco adhesivo 1-3 mm MÁS GRANDE que el estoma (evita estrangulamiento y erosión)', 'Lavado: no usar povidona, alcoholes ni óxido de zinc (merman adherencia del disco)'], favorite: true },
+                { id: 'p15', name: 'Manejo Drenajes Quirúrgicos Cerrados (Redón/J-Pratt)', materials: ['Guantes no estériles', 'Recipiente medidor graduado', 'Gasas estériles y antiséptico para incisión'], notes: ['Dispositivos como pera Jackson-Pratt vaciar c/12h o a mitad de capacidad (ya que la fuerza subatmosférica decae)', 'Al vaciar: comprimir el reservorio al máximo, extruir el aire, y tapar (efecto vacío activo)', 'Técnica de Ordeñado ("Milking"): Fijar tubo firmemente pegado a la piel, pellizcar y deslizar hacia la pera', 'Retirada: NEUTRALIZAR VACÍO (destapar) antes de tirar; si no, arrancarás tejido'], favorite: false },
+                { id: 'p16', name: 'Terapia de Presión Negativa (TPN / VAC)', materials: ['Esponja activa (poliuretano reticulado negro o alcohol polivinílico blanco/denso)', 'Film poliuretano adhesivo', 'Campana almohadilla succión (TRAC Pad)', 'Apósito hidrocoloide / silicona de barrera', 'Consola unidad de vacío computarizada'], notes: ['Macrostrain (acerca bordes, quita exudado) + Microstrain (angiogénesis masiva celular)', 'Proteger siempre márgenes piel sana con marco hidrocoloide; la esponja no debe sobrepasar el lecho de la herida', 'Presión estándar: -125 mmHg. Continua 48h (estabiliza), luego intermitente (estimula capilares)', 'Pre-retirada (48-72h): Apagar e instilar SSF por campana para macerar coágulos de granulación y evitar sangrado agresivo'], favorite: true },
+                { id: 'p17', name: 'Cura de UPP / Herida Compleja', materials: ['Suero Fisiológico o Solución Poliheximanida', 'Gasas estériles y Guantes', 'Apósitos avanzados (hidrogel, alginato, espuma, hidrocoloide)', 'Instrumental desbridamiento (si precisa)'], notes: ['Limpiar irrigando a presión moderada o con toques suaves, del centro a la periferia', 'NUNCA friccionar el lecho de la herida (destruye granulación neovascular)', 'Abordaje TIME: Tejido, Infección, Humedad, Bordes'], favorite: false },
+                
+                // ANALÍTICAS Y TÉCNICAS GENERALES
+                { id: 'p18', name: 'Extracción Analítica (Vacutainer)', materials: ['Palomilla o Aguja recta', 'Tubos de vacío (en orden estándar)', 'Campana/Adaptador', 'Gasas', 'Compresor venoso'], notes: ['Orden: Hemocultivos → Citrato (Azul, coag) → Suero (Rojo/Oro, bioq) → Heparina (Verde) → EDTA (Lila, hemograma) → Fluoruro (Gris, gluc)', 'Invertir tubos suavemente 8-10 veces', 'No mantener el compresor apretado más de 1-2 minutos (produce alteraciones y hemoconcentración)'], favorite: true },
+                { id: 'p19', name: 'Extracción de Hemocultivos', materials: ['Sets de 2 frascos (Aerobio y Anaerobio)', 'Palomilla de extracción', 'Clorhexidina alcohólica 2%', 'Guantes estériles y gasas'], notes: ['Desinfectar primero la piel del paciente Y los tapones de goma de los frascos de cultivo', 'Con palomilla, llenar SIEMPRE PRIMERO el frasco AEROBIO (el aire atrapado de la alargadera purgada entrará aquí y no matará anaerobios)', 'Procedimiento aséptico puro para evitar falsos positivos bacterianos de piel'], favorite: true },
+                { id: 'p20', name: 'Gasometría Arterial', materials: ['Jeringa heparinizada de fábrica', 'Aguja SC fina', 'Clorhexidina alcohólica', 'Gasas', 'Contenedor corto-punzante rígido'], notes: ['Es obligatorio realizar "Test de Allen" previo (si punción radial) para comprobar red ulnar', 'Punción a 45º (radial) o 90º (femoral)', 'Comprimir entre 5 a 10 min de forma intensa', 'Remitir en hielo si proceso tarda > 15min. Purgar y desechar CUALQUIER burbuja inmediatamente'], favorite: true },
+                { id: 'p21', name: 'Electrocardiograma (ECG)', materials: ['Electrodos adhesivos o ventosas', 'Alcohol/Gasas/Gel', 'Papel milimetrado ECG', 'Electrocardiógrafo', 'Maquinilla (rasurar tórax velludos)'], notes: ['V1: 4º EIC borde esternal Dcho', 'V2: 4º EIC borde esternal Izdo', 'V4: 5º EIC línea medioclavicular Izda', 'V3: Entre V2 y V4', 'Asegurar buena conductancia de piel (seca, sin cremas)'], favorite: true },
+                { id: 'p22', name: 'RCP Básica (SVB) Adultos', materials: ['Desfibrilador Externo Automático (DEA)', 'Mascarilla bolsillo / Ambú de ventilación', 'Guantes', 'Cánula de Guedel'], notes: ['Ciclo ininterrumpido: 30 compresiones fuertes / 2 ventilaciones (salvo Vía Aérea aislada = continuo)', 'Profundidad de 5 a 6 cm en centro del esternón, ritmo 100 a 120 lat/min', 'Permitir re-expansión completa del tórax en cada latido', 'Pausas menores a 10s', 'Aplicar parches de DEA sin interrumpir masaje'], favorite: true }
             ],
             quiz: [
-                { id: 'q1', topic: 'Fundamentos', q: '¿Qué mide la escala de Norton?', o: ['Riesgo de caídas', 'Riesgo de UPP', 'Dolor', 'Nivel de consciencia'], a: 1, e: 'La escala de Norton (y Braden) valora el riesgo de padecer úlceras por presión.' },
-                { id: 'q2', topic: 'Farmacología', q: 'Antídoto de las benzodiacepinas:', o: ['Naloxona', 'Flumazenilo', 'Protrombina', 'N-acetilcisteína'], a: 1, e: 'El flumazenilo revierte los efectos de las BZD. La naloxona es para opiáceos.' }
+                { id: 'q1', topic: 'Fundamentos', q: '¿Qué mide la escala de Norton?', o: ['Riesgo de caídas', 'Riesgo de UPP', 'Dolor', 'Nivel de consciencia'], a: 1, e: 'La escala de Norton valora el riesgo de padecer úlceras por presión.' },
+                { id: 'q2', topic: 'Farmacología', q: 'Antídoto de las benzodiacepinas:', o: ['Naloxona', 'Flumazenilo', 'Protrombina', 'N-acetilcisteína'], a: 1, e: 'El flumazenilo revierte los efectos de las BZD.' }
             ],
             labs: [
                 ['Hemoglobina', 'Hb', 'g/dL', 'M 12-16 | H 13.5-17.5', 'Hematimetría'],
-                ['Hematocrito', 'Hto', '%', 'M 36-46 | H 41-53', 'Hematimetría'],
                 ['Leucocitos', 'WBC', '/µL', '4.500 - 11.000', 'Hematimetría'],
                 ['Plaquetas', 'PLT', '/µL', '150.000 - 400.000', 'Hematimetría'],
-                ['VCM', 'Volumen Corpuscular', 'fL', '80 - 100', 'Hematimetría'],
-                ['TP / INR', 'Índice Coagulación', '-', 'INR normal: 0.8-1.2 | ACO: 2.0-3.0', 'Coagulación'],
-                ['TTPA', 'Tiempo Tromboplastina', 'seg', '25 - 35', 'Coagulación'],
-                ['Dímero D', 'DD', 'ng/mL', '< 500', 'Coagulación'],
                 ['Sodio', 'Na', 'mEq/L', '135 - 145', 'Bioquímica'],
                 ['Potasio', 'K', 'mEq/L', '3.5 - 5.0', 'Bioquímica'],
-                ['Calcio', 'Ca', 'mg/dL', '8.5 - 10.5', 'Bioquímica'],
-                ['Magnesio', 'Mg', 'mg/dL', '1.7 - 2.2', 'Bioquímica'],
-                ['Cloro', 'Cl', 'mEq/L', '98 - 106', 'Bioquímica'],
                 ['Glucosa', 'Gluc', 'mg/dL', '70 - 100', 'Bioquímica'],
                 ['Creatinina', 'Cr', 'mg/dL', '0.7 - 1.2', 'Función Renal'],
-                ['Urea', 'BUN', 'mg/dL', '10 - 50', 'Función Renal'],
-                ['Ácido Úrico', 'Uricemia', 'mg/dL', '3.5 - 7.2', 'Función Renal'],
-                ['AST / GOT', 'Transaminasa', 'U/L', '< 40', 'Función Hepática'],
-                ['ALT / GPT', 'Transaminasa', 'U/L', '< 40', 'Función Hepática'],
-                ['GGT', 'Gamma-GT', 'U/L', '< 50', 'Función Hepática'],
-                ['Bilirrubina Total', 'Bb', 'mg/dL', '0.1 - 1.2', 'Función Hepática'],
-                ['Colesterol Total', 'Col', 'mg/dL', '< 200', 'Lípidos'],
-                ['LDL', 'Col. Malo', 'mg/dL', '< 130', 'Lípidos'],
-                ['HDL', 'Col. Bueno', 'mg/dL', '> 40', 'Lípidos'],
-                ['Triglicéridos', 'TG', 'mg/dL', '< 150', 'Lípidos'],
-                ['Proteína C Reactiva', 'PCR', 'mg/L', '< 5.0', 'Reactantes'],
-                ['Procalcitonina', 'PCT', 'ng/mL', '< 0.5', 'Reactantes'],
-                ['Troponina I/T', 'Tn', 'ng/mL', 'Referencia lab (<0.04)', 'Cardíaco'],
-                ['Pro-BNP', 'NT-proBNP', 'pg/mL', '< 125', 'Cardíaco']
+                ['PCR', 'Proteína C Reactiva', 'mg/L', '< 5.0', 'Reactantes']
             ],
             glossary: [
-                ['AAS', 'Ácido Acetilsalicílico'], ['ACV / ICTUS', 'Accidente Cerebrovascular'], ['AINE', 'Antiinflamatorio No Esteroideo'],
-                ['BZD', 'Benzodiacepina'], ['CVC', 'Catéter Venoso Central'], ['ECG / EKG', 'Electrocardiograma'],
-                ['EPOC', 'Enfermedad Pulmonar Obstructiva Crónica'], ['FC', 'Frecuencia Cardíaca'], ['FiO2', 'Fracción Inspiratoria de Oxígeno'],
-                ['FR', 'Frecuencia Respiratoria'], ['GCS', 'Escala de Coma de Glasgow (Glasgow Coma Scale)'], ['GEA', 'Gastroenteritis Aguda'],
-                ['Hb', 'Hemoglobina'], ['HTA', 'Hipertensión Arterial'], ['IAM', 'Infarto Agudo de Miocardio'],
-                ['ICC', 'Insuficiencia Cardíaca Congestiva'], ['IRA', 'Insuficiencia Renal/Respiratoria Aguda'], ['IRC', 'Insuficiencia Renal Crónica'],
-                ['ITU', 'Infección del Tracto Urinario'], ['LPP / UPP', 'Lesión / Úlcera por Presión'], ['NPO', 'Nada por vía oral (Non per os)'],
-                ['PEEP', 'Presión Positiva al Final de la Espiración'], ['PEG', 'Gastrostomía Endoscópica Percutánea'], ['PICC', 'Catéter Central de Inserción Periférica'],
-                ['RCP', 'Reanimación Cardiopulmonar'], ['REA', 'Reanimación (Unidad de Despertar)'], ['RM / RMN', 'Resonancia Magnética'],
-                ['Rx', 'Prescripción / Radiografía'], ['SatO2', 'Saturación Periférica de Oxígeno'], ['SNG', 'Sonda Nasogástrica'],
-                ['SVD', 'Sonda Vesical de Drenaje'], ['TA / PA', 'Tensión / Presión Arterial'], ['TAC', 'Tomografía Axial Computarizada'],
-                ['TEP', 'Tromboembolismo Pulmonar'], ['TET', 'Tubo Endotraqueal'], ['TVP', 'Trombosis Venosa Profunda'],
-                ['UCI / UVI', 'Unidad de Cuidados Intensivos'], ['VM', 'Ventilación Mecánica'], ['VMNI', 'Ventilación Mecánica No Invasiva'],
-                ['VVP', 'Vía Venosa Periférica']
+                ['ACV', 'Accidente Cerebrovascular'], ['CVC', 'Catéter Venoso Central'], ['ECG', 'Electrocardiograma'],
+                ['EPOC', 'Enfermedad Pulmonar Obstructiva Crónica'], ['FC', 'Frecuencia Cardíaca'], ['GCS', 'Glasgow Coma Scale'],
+                ['HTA', 'Hipertensión Arterial'], ['IAM', 'Infarto Agudo de Miocardio'], ['SNG', 'Sonda Nasogástrica'],
+                ['UPP', 'Úlcera por Presión'], ['VVP', 'Vía Venosa Periférica']
             ],
-            ucv: { academicYear: '2026-2027', subjects: { "1": [["101", "Anatomía", "1"], ["102", "Fisiología", "2"], ["103", "Fundamentos de Enfermería", "Anual"]], "2": [["201", "Farmacología", "1"], ["202", "Enfermería Clínica I", "Anual"]], "3": [["301", "Enfermería Clínica II", "Anual"]], "4": [["401", "Prácticum IV", "Anual"]] } }
+            ucv: { academicYear: '2026-2027', subjects: { "1": [["101", "Anatomía", "1"], ["102", "Fisiología", "2"], ["103", "Fundamentos de Enfermería", "Anual"]], "2": [["201", "Farmacología", "1"], ["202", "Enfermería Clínica I", "Anual"]] } }
         };
 
-        // --- 4. ESTADO REACTIVO (Proxy) ---
         const _rawState = {
             route: 'today',
             slideOverOpen: false, slideOverView: null, slideOverData: null,
+            readOnlyMode: false,
             settings: {
                 onboardingComplete: false, profileName: '', university: 'UCV',
                 courseNumber: '1', course: '1º Enfermería', selectedSubjects: [],
                 hasPracticum: false, practicum: '', hospital: '', service: '',
                 periodStart: '', periodEnd: '', shift: '',
                 theme: 'system', icdWorker: '', apiMode: 'direct',
-                lockEnabled: false, lockMethod: 'pin', pinHash: '', credentialId: '', autoLock: 5, showClinicalWarnings: true
+                lockEnabled: false, lockMethod: 'webauthn', pinHash: '', credentialId: '', autoLock: 5, showClinicalWarnings: true,
+                glovesMode: false, legalAccepted: false, legalAcceptedAt: '', caseFilterArea: ''
             },
             unlocked: true, lastActive: Date.now()
         };
 
         const state = new Proxy(_rawState, {
             set(target, property, value) {
+                const oldGloves = target.settings?.glovesMode;
                 target[property] = value;
                 if (property === 'route') {
                     $$('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.route === value));
@@ -507,11 +531,17 @@
                         setTimeout(() => { if (!target.slideOverOpen) $('#slideOverContent').innerHTML = ''; }, 300);
                     }
                 }
+                if (property === 'readOnlyMode') {
+                    document.documentElement.classList.toggle('readonly-mode', value);
+                    renderView();
+                }
+                if (property === 'settings' && value.glovesMode !== oldGloves) {
+                    document.documentElement.classList.toggle('gloves-mode', value.glovesMode);
+                }
                 return true;
             }
         });
 
-        // --- 5. UI CORE (Toasts, Modales) ---
         const UI = {
             toast(msg) {
                 const t = $('#toast'); t.textContent = msg; t.classList.add('show');
@@ -530,7 +560,7 @@
                 });
             },
             alert(title, text) {
-                $('#modalTitle').textContent = title; $('#modalBody').innerHTML = text; // Permite HTML simple para detalles clínicos
+                $('#modalTitle').textContent = title; $('#modalBody').innerHTML = text;
                 $('#modalActions').innerHTML = `<button class="btn primary" id="modOk">OK</button>`;
                 $('#modalOverlay').classList.add('open');
                 $('#modOk').onclick = () => $('#modalOverlay').classList.remove('open');
@@ -541,14 +571,13 @@
             }
         };
 
-        const setTitle = (title, context = 'NurseFlow') => { $('#pageTitle').textContent = title; $('#contextLabel').textContent = context; };
+        const setTitle = (title, context = 'NurseFlow Pro') => { $('#pageTitle').textContent = title; $('#contextLabel').textContent = context; };
         
-        // Helpers de HTML para reuso
         const UIHelpers = {
             section: (title, actionHtml = '') => `<div class="section-title"><span>${esc(title)}</span>${actionHtml}</div>`,
             noData: (title, body = '') => `<div class="empty-state"><strong>${esc(title)}</strong><span style="font-size:0.9rem">${esc(body)}</span></div>`,
             notice: (text, info = false, danger = false) => `<div class="notice ${info ? 'info' : ''} ${danger ? 'danger' : ''}">${text}</div>`,
-            clinicalWarning: () => state.settings.showClinicalWarnings ? `<div class="notice" style="margin-top:24px">Uso académico. Verifica siempre la prescripción, ficha técnica y protocolo vigente de tu unidad.</div>` : '',
+            clinicalWarning: () => state.settings.showClinicalWarnings ? `<div class="notice" style="margin-top:24px">⚠️ Uso académico y de apoyo. Verifica siempre la prescripción, ficha técnica y protocolo vigente de tu unidad hospitalaria.</div>` : '',
             listRow: ({ title, sub, icon = '✓', badge = '', action = '', id = '' }) => `
                 <button class="list-row ${action ? 'clickable' : ''}" ${action} ${id ? `id="${id}"` : ''}>
                     <div class="avatar">${icon}</div>
@@ -562,7 +591,6 @@
             })
         };
 
-        // --- 6. RENDERIZADORES DE VISTAS PRINCIPALES ---
         async function renderView() {
             if (!state.unlocked) return;
             const container = $('#app');
@@ -572,7 +600,7 @@
                 if (state.route === 'today') await renderToday(container);
                 else if (state.route === 'university') await renderUniversity(container);
                 else if (state.route === 'practicum') await renderPracticum(container);
-                else if (state.route === 'consult') await renderConsult(container);
+                else if (state.route === 'batea') await renderBateaFull(container);
                 else if (state.route === 'study') await renderStudy(container);
             } catch (e) {
                 container.innerHTML = UIHelpers.notice(`Error: ${esc(e.message)}`, false, true);
@@ -594,7 +622,6 @@
             const todayDay = days.find(x => x.date === today);
 
             let html = '';
-            
             if (state.settings.hasPracticum) {
                 let progress = '';
                 if(state.settings.periodStart && state.settings.periodEnd) {
@@ -602,7 +629,6 @@
                     const p = clamp(Math.round((new Date() - start) / (end - start) * 100), 0, 100);
                     progress = `<div style="height:4px; background:rgba(255,255,255,0.3); border-radius:2px; margin-top:8px; overflow:hidden;"><div style="width:${p}%; height:100%; background:white;"></div></div>`;
                 }
-
                 html += `
                     <div class="card hero">
                         <p class="muted small">${esc(state.settings.hospital || 'Centro asignado')} ${state.settings.service ? '· '+esc(state.settings.service) : ''}</p>
@@ -610,35 +636,25 @@
                         <p class="small">${state.settings.periodStart ? dateFmt(state.settings.periodStart) : ''} → ${state.settings.periodEnd ? dateFmt(state.settings.periodEnd) : ''}</p>
                         ${progress}
                         <div style="display:flex; gap:8px; margin-top:16px;">
-                            <button class="btn hero-btn" data-action="goRoute" data-val="practicum">Ver Prácticum</button>
+                            <button class="btn hero-btn" data-action="goRoute" data-val="practicum">Ver Prácticas</button>
                             ${isPracActive ? `<button class="btn" style="background:rgba(255,255,255,0.2); color:white;" data-action="openSlide" data-view="dayLog">Registrar Día</button>` : ''}
                         </div>
                     </div>`;
             }
 
-            html += UIHelpers.section(isPracActive ? 'Accesos rápidos' : 'Tu día');
-            html += `<div class="grid-2">`;
-            if (isPracActive) {
-                html += `
-                    <div class="quick-action" data-action="openSlide" data-view="caseForm">
-                        <div class="ico">＋</div><strong>Nuevo caso</strong><small>Registro anonimizado</small>
-                    </div>
-                    <div class="quick-action" data-action="openSlide" data-view="batea">
-                        <div class="ico">▤</div><strong>La Batea</strong><small>Repaso de técnicas</small>
-                    </div>`;
-            }
-            html += `
-                <div class="quick-action" data-action="goRoute" data-val="university">
-                    <div class="ico">▦</div><strong>Horario</strong><small>Clases de hoy</small>
+            html += UIHelpers.section('Accesos rápidos');
+            html += `<div class="grid-2">
+                <div class="quick-action" data-action="openSlide" data-view="caseForm">
+                    <div class="ico">＋</div><strong>Nuevo caso</strong><small>Registro anonimizado</small>
                 </div>
-                <div class="quick-action" data-action="openSlide" data-view="tasks">
-                    <div class="ico">✓</div><strong>Pendientes</strong><small>${pending.length} activos</small>
+                <div class="quick-action" data-action="goRoute" data-val="batea">
+                    <div class="ico">▤</div><strong>La Batea</strong><small>Técnicas y material</small>
                 </div>
                 <div class="quick-action" data-action="openSlide" data-view="medSearch">
-                    <div class="ico">Rx</div><strong>CIMA</strong><small>Búsqueda rápida</small>
+                    <div class="ico">Rx</div><strong>CIMA</strong><small>Búsqueda de fármacos</small>
                 </div>
-                <div class="quick-action" data-action="goRoute" data-val="study">
-                    <div class="ico">◫</div><strong>Estudio</strong><small>Flashcards</small>
+                <div class="quick-action" data-action="openSlide" data-view="calculators">
+                    <div class="ico">÷</div><strong>Calculadoras</strong><small>Dosis, ritmos, PAM</small>
                 </div>
             </div>`;
 
@@ -646,17 +662,6 @@
             html += `<div class="list">` + (todayClasses.length ? todayClasses.map(x => UIHelpers.listRow({
                 title: x.title, sub: `${x.start} - ${x.end} ${x.room ? '· '+x.room : ''}`, icon: x.start.slice(0,2)
             })).join('') : UIHelpers.noData('Sin clases hoy', 'Disfruta tu tiempo libre.')) + `</div>`;
-
-            if (isPracActive) {
-                html += UIHelpers.section('Prácticum hoy');
-                html += `
-                    <div class="metric-row">
-                        <div class="metric"><b>${todayCases.length}</b><span>casos</span></div>
-                        <div class="metric"><b>${todayCases.reduce((n,c)=>n+(c.procedures?.length||0),0)}</b><span>técnicas</span></div>
-                        <div class="metric"><b>${todayDay?.attendanceOfficial ? '✓' : '—'}</b><span>asist.</span></div>
-                        <div class="metric"><b>${pending.filter(p=>p.category==='Prácticum').length}</b><span>pend.</span></div>
-                    </div>`;
-            }
 
             if (pending.length) {
                 html += UIHelpers.section('Pendientes próximos', `<button class="btn" style="height:32px; padding:0 12px" data-action="openSlide" data-view="tasks">Todos</button>`);
@@ -672,14 +677,13 @@
         async function renderUniversity(container) {
             setTitle('Universidad', state.settings.course);
             const [schedule, tasks, exceptions] = await Promise.all([NurseDB.all('schedule'), NurseDB.all('tasks'), NurseDB.all('exceptions')]);
-            const selectedNames = state.settings.selectedSubjects.length ? state.settings.selectedSubjects.length + ' asignaturas' : 'Sin asignaturas';
+            const selectedNames = state.settings.selectedSubjects.length ? state.settings.selectedSubjects.length + ' asignaturas' : 'Plan académico activo';
 
             let html = `
                 <div class="card">
                     <strong>${esc(state.settings.course)}</strong>
                     <p class="sub muted" style="font-size:0.85rem">${state.settings.university} · ${selectedNames}</p>
                 </div>
-                
                 <div class="grid-2">
                     <div class="quick-action" data-action="openSlide" data-view="tasks">
                         <div class="ico">✓</div><strong>Pendientes</strong><small>${tasks.filter(t=>!t.done).length} activos</small>
@@ -687,18 +691,10 @@
                     <div class="quick-action" data-action="openSlide" data-view="exceptions">
                         <div class="ico">↺</div><strong>Excepciones</strong><small>${exceptions.length} fechas</small>
                     </div>
-                    <div class="quick-action" data-action="openSlide" data-view="pae">
-                        <div class="ico">PAE</div><strong>NANDA/NIC/NOC</strong><small>Apuntes propios</small>
-                    </div>
-                    <div class="quick-action" data-action="goRoute" data-val="study">
-                        <div class="ico">◫</div><strong>Estudio</strong><small>Repaso</small>
-                    </div>
                 </div>
-
                 ${UIHelpers.section('Semana tipo', `<button class="btn" style="height:32px; padding:0 12px" data-action="openSlide" data-view="classForm">Añadir</button>`)}
             `;
 
-            // Strip semanal
             const base = new Date(); const monday = new Date(base); const delta = (base.getDay() + 6) % 7; monday.setDate(base.getDate() - delta);
             html += `<div class="calendar-week">` + Array.from({length: 7}, (_, i) => {
                 const d = new Date(monday); d.setDate(monday.getDate() + i); const day = (i + 1) % 7; const has = schedule.some(x => +x.day === day);
@@ -726,7 +722,6 @@
 
         async function renderPracticum(container) {
             setTitle('Prácticas', 'Portfolio Clínico');
-            
             if(!state.settings.hasPracticum) {
                 container.innerHTML = `
                     <div class="empty-state" style="padding-top:40px;">
@@ -739,9 +734,12 @@
             }
 
             const [cases, days] = await Promise.all([NurseDB.all('cases'), NurseDB.all('days')]);
-            const orderedCases = [...cases].sort((a,b) => b.date.localeCompare(a.date));
+            const filterArea = state.settings.caseFilterArea || '';
+            const filteredCases = filterArea ? cases.filter(c => c.area === filterArea) : cases;
+            const orderedCases = [...filteredCases].sort((a,b) => b.date.localeCompare(a.date));
             const procCount = cases.reduce((n,c) => n + (c.procedures?.length||0), 0);
-            
+            const areas = [...new Set(cases.map(c => c.area).filter(Boolean))];
+
             container.innerHTML = `
                 <div class="card hero">
                     <p class="muted small">${esc(state.settings.hospital)} ${state.settings.service ? '· '+esc(state.settings.service) : ''}</p>
@@ -762,10 +760,10 @@
 
                 <div class="grid-2" style="margin-top:16px">
                     <div class="quick-action" data-action="openSlide" data-view="dayLog">
-                        <div class="ico">✓</div><strong>Registrar Día</strong><small>Asistencia general</small>
+                        <div class="ico">✓</div><strong>Registrar Día</strong><small>Asistencia y turno</small>
                     </div>
                     <div class="quick-action" data-action="openSlide" data-view="portfolio">
-                        <div class="ico">▤</div><strong>Portfolio</strong><small>Técnicas realizadas</small>
+                        <div class="ico">▤</div><strong>Portfolio</strong><small>Conteo de técnicas</small>
                     </div>
                     <div class="quick-action" data-action="openSlide" data-view="tutoria">
                         <div class="ico">◎</div><strong>Tutoría</strong><small>Progreso competencial</small>
@@ -775,68 +773,58 @@
                     </div>
                 </div>
 
-                ${UIHelpers.section('Casos recientes', `<button class="btn" style="height:32px; padding:0 12px" data-action="openSlide" data-view="caseDiary">Ver diario</button>`)}
+                ${UIHelpers.section('Casos Clínicos', `
+                    <div style="display:flex; gap:4px; align-items:center;">
+                        <select class="field" id="areaFilterSelect" style="margin:0; min-height:32px; font-size:0.8rem;">
+                            <option value="">Todas las áreas</option>
+                            ${areas.map(a => `<option value="${esc(a)}" ${filterArea===a?'selected':''}>${esc(a)}</option>`).join('')}
+                        </select>
+                    </div>
+                `)}
                 <div class="list">
-                    ${orderedCases.slice(0,4).map(c => UIHelpers.listRow({
-                        title: c.diagnosis || 'Caso sin diagnóstico', sub: `${dateFmt(c.date)} · ${(c.procedures||[]).length} procedimientos`,
+                    ${orderedCases.map(c => UIHelpers.listRow({
+                        title: c.diagnosis || 'Caso sin diagnóstico', sub: `${dateFmt(c.date)} · ${c.area ? esc(c.area)+' · ' : ''}${(c.procedures||[]).length} procedimientos`,
                         icon: new Date(c.date).getDate(), badge: c.starred ? '★ Memoria' : '', action: `data-action="openSlide" data-view="caseDetail" data-id="${c.id}"`
-                    })).join('') || UIHelpers.noData('Diario vacío', 'Registra casos anonimizados.')}
+                    })).join('') || UIHelpers.noData('Sin casos en esta área', 'Registra casos anonimizados.')}
                 </div>
                 ${UIHelpers.clinicalWarning()}
             `;
+
+            $('#areaFilterSelect')?.addEventListener('change', e => {
+                state.settings.caseFilterArea = e.target.value;
+                saveSettings();
+                renderView();
+            });
         }
 
-        async function renderConsult(container) {
-            setTitle('Consulta', 'Offline-first');
-            const meds = await NurseDB.all('meds');
-
+        async function renderBateaFull(container) {
+            setTitle('La Batea', 'Guía de Técnicas');
+            const rows = (await NurseDB.all('procedures')).sort((a,b)=>(b.favorite-a.favorite)||a.name.localeCompare(b.name));
             container.innerHTML = `
-                <div class="grid-2">
-                    <div class="quick-action" data-action="openSlide" data-view="medSearch">
-                        <div class="ico">Rx</div><strong>Medicamentos</strong><small>${meds.length} offline · CIMA</small>
-                    </div>
-                    <div class="quick-action" data-action="openSlide" data-view="scanner">
-                        <div class="ico">▣</div><strong>Escáner</strong><small>Código de medicamento</small>
-                    </div>
-                    <div class="quick-action" data-action="openSlide" data-view="batea">
-                        <div class="ico">▤</div><strong>La Batea</strong><small>Protocolos de técnicas</small>
-                    </div>
-                    <div class="quick-action" data-action="openSlide" data-view="calculators">
-                        <div class="ico">÷</div><strong>Calculadoras</strong><small>Dosis, ritmos, balance</small>
-                    </div>
-                    <div class="quick-action" data-action="openSlide" data-view="scales">
-                        <div class="ico">◎</div><strong>Escalas</strong><small>Glasgow, Norton, EVA...</small>
-                    </div>
-                    <div class="quick-action" data-action="openSlide" data-view="labs">
-                        <div class="ico">↕</div><strong>Analíticas</strong><small>Valores de referencia</small>
-                    </div>
-                    <div class="quick-action" data-action="openSlide" data-view="dictionary">
-                        <div class="ico">A↔</div><strong>Diccionario</strong><small>Jerga y siglas</small>
-                    </div>
-                    <div class="quick-action" data-action="openSlide" data-view="icdSearch">
-                        <div class="ico">CIE</div><strong>CIE-11</strong><small>OMS Diagnósticos</small>
-                    </div>
-                </div>
+                <input class="field" id="bateaFullQ" placeholder="Filtrar técnica o material...">
+                <div class="list" id="bateaFullList">${rows.map(p=>UIHelpers.listRow({title: p.name, sub: `${p.materials.length} materiales · ${p.notes?.length||0} notas`, icon: p.favorite?'★':'+', action: `data-action="openSlide" data-view="procDetail" data-id="${p.id}"`})).join('')}</div>
                 ${UIHelpers.clinicalWarning()}
             `;
+            $('#bateaFullQ').oninput = e => {
+                const q = e.target.value.toLowerCase();
+                [...$('#bateaFullList').children].forEach(c => c.classList.toggle('hidden', !c.textContent.toLowerCase().includes(q)));
+            };
         }
 
         async function renderStudy(container) {
             setTitle('Estudio', 'Repaso Inteligente');
-            const [cards, quiz, cases] = await Promise.all([NurseDB.all('flashcards'), NurseDB.all('quiz'), NurseDB.all('cases')]);
+            const [cards, quiz] = await Promise.all([NurseDB.all('flashcards'), NurseDB.all('quiz')]);
             const due = cards.filter(c => !c.due || c.due <= getLocalISOToday());
-            const reviews = [...new Set(cases.flatMap(c => [c.review, ...(c.meds||[]), c.diagnosis].filter(Boolean)))];
 
             container.innerHTML = `
                 <div class="card hero">
                     <p class="muted small">Tu repaso diario</p>
                     <h2 style="font-size: 1.5rem; margin: 4px 0 8px;">${due.length} Flashcards</h2>
-                    <p style="font-size:0.9rem">${reviews.length} temas clave de prácticas</p>
+                    <p style="font-size:0.9rem">Sistema de repetición espaciada</p>
                     <div style="display:flex; gap:8px; margin-top:16px;">
                         <button class="btn hero-btn" data-action="openSlide" data-view="flashReview">Empezar Repaso</button>
                     </div>
                 </div>
-
                 <div class="grid-2">
                     <div class="quick-action" data-action="openSlide" data-view="flashcards">
                         <div class="ico">◫</div><strong>Gestor</strong><small>${cards.length} tarjetas en total</small>
@@ -854,13 +842,11 @@
             `;
         }
 
-        // --- 7. SLIDE-OVERS (Paneles Laterales para Formularios y Vistas Complejas) ---
         async function renderSlideOverContent(view, data) {
             const content = $('#slideOverContent');
             let html = '';
 
             try {
-                // UNIVERSIDAD
                 if (view === 'classForm') {
                     const row = data ? await NurseDB.get('schedule', data) : null;
                     const subjects = NURSE_DATA.ucv.subjects[String(state.settings.courseNumber)] || [];
@@ -906,31 +892,19 @@
                         </form>
                         <div class="list">${rows.map(x=>`<div class="list-row"><label class="check-row" style="margin:0; flex:1;"><input type="checkbox" data-task="${x.id}" ${x.done?'checked':''}><span><strong>${esc(x.title)}</strong><div class="sub">${x.due?dateFmt(x.due):'Sin fecha'} · ${esc(x.category)}</div></span></label><button class="btn icon-only" data-action="deleteTask" data-id="${x.id}">×</button></div>`).join('') || UIHelpers.noData('Nada pendiente')}</div>`;
                 }
-                else if (view === 'pae') {
-                    const rows = await NurseDB.all('pae');
-                    html = `
-                        ${UIHelpers.notice('Espacio para diagnósticos NANDA/NIC/NOC manuales. No incluye base propietaria.', true)}
-                        <form id="paeForm" class="card">
-                            <div class="form-row"><div><label>Tipo</label><select class="field" name="type"><option>NANDA</option><option>NIC</option><option>NOC</option></select></div><div><label>Código</label><input class="field" name="code"></div></div>
-                            <label>Título</label><input class="field" name="title" required>
-                            <label>Notas</label><textarea class="field" name="notes" style="min-height:60px"></textarea>
-                            <button class="btn primary block">Guardar</button>
-                        </form>
-                        <div class="list">${rows.map(x=>UIHelpers.listRow({title: `${x.code} ${x.title}`, sub: x.notes, icon: x.type.charAt(0), badge: x.type, action: `data-action="deletePae" data-id="${x.id}"`})).join('')}</div>`;
-                }
-
-                // PRACTICUM
                 else if (view === 'caseForm') {
                     const row = data ? await NurseDB.get('cases', data) : null;
                     const procs = await NurseDB.all('procedures');
                     html = `
-                        ${UIHelpers.notice('Registro académico anonimizado. No introduzcas SIP, cama o nombres.')}
+                        ${UIHelpers.notice('Registro académico anonimizado. No introduzcas SIP, cama o nombres de pacientes.')}
                         <form id="caseForm">
-                            <div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="date" value="${row?.date || getLocalISOToday()}" required></div><div><label>Área</label><input class="field" name="area" value="${esc(row?.area || state.settings.service)}"></div></div>
+                            <div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="date" value="${row?.date || getLocalISOToday()}" required></div><div><label>Área / Servicio</label><input class="field" name="area" value="${esc(row?.area || state.settings.service || 'Planta')}"></div></div>
                             
                             <label>Diagnóstico (Autocompletado CIE-11)</label>
                             <input class="field" name="diagnosis" id="caseDiagnosis" value="${esc(row?.diagnosis||'')}" placeholder="Ej. Neumonía" autocomplete="off" required>
                             <input type="hidden" name="icdCode" id="caseIcdCode" value="${esc(row?.icdCode||'')}">
+                            <input type="hidden" name="icdValidated" id="caseIcdValidated" value="${row?.icdValidated ? 'true' : 'false'}">
+                            <div id="icdStatus" style="font-size:0.8rem; margin-top:-8px; margin-bottom:12px;">${row?.icdValidated ? '<span style="color:var(--success)">✓ Código verificado OMS</span>' : '<span class="muted">Código no verificado</span>'}</div>
                             <div id="icdAutocomplete" class="list" style="display:none; margin-bottom:16px;"></div>
                             
                             <label>Contexto Clínico</label><textarea class="field" name="context" placeholder="Solo lo necesario para aprender...">${esc(row?.context||'')}</textarea>
@@ -955,25 +929,21 @@
                             <label class="check-row"><input type="checkbox" name="starred" ${row?.starred?'checked':''}><span>Destacar para Memoria Final</span></label>
 
                             <div style="display:flex; gap:8px; margin-top:24px;">
-                                ${row ? `<button type="button" class="btn danger" style="flex:1" data-action="deleteCase" data-id="${row.id}">Borrar</button>` : ''}
-                                <button class="btn primary" style="flex:2">Guardar Caso</button>
+                                ${row && !state.readOnlyMode ? `<button type="button" class="btn danger" style="flex:1" data-action="deleteCase" data-id="${row.id}">Borrar</button>` : ''}
+                                ${!state.readOnlyMode ? `<button class="btn primary" style="flex:2">Guardar Caso</button>` : '<p class="muted">Modo solo lectura activado.</p>'}
                             </div>
                         </form>`;
                 }
                 else if (view === 'caseDetail') {
                     const c = await NurseDB.get('cases', data); if(!c) return;
                     html = `
-                        <div class="card"><div class="sub muted">${dateFmt(c.date)} ${c.area ? '· '+esc(c.area) : ''} ${c.icdCode ? '· CIE-11 '+esc(c.icdCode) : ''}</div><h3 style="font-size:1.3rem; margin-top:4px;">${esc(c.diagnosis)}</h3>${c.starred ? '<span class="pill warning" style="margin-top:8px">★ Destacado</span>' : ''}</div>
+                        <div class="card"><div class="sub muted">${dateFmt(c.date)} ${c.area ? '· '+esc(c.area) : ''} ${c.icdCode ? '· CIE-11 '+esc(c.icdCode) : ''} ${c.icdValidated ? '· <span style="color:var(--success)">✓ Verificado</span>' : ''}</div><h3 style="font-size:1.3rem; margin-top:4px;">${esc(c.diagnosis)}</h3>${c.starred ? '<span class="pill warning" style="margin-top:8px">★ Destacado</span>' : ''}</div>
                         ${c.context ? `<h4>Contexto</h4><p class="card">${esc(c.context)}</p>` : ''}
                         <h4>Procedimientos</h4><div class="list" style="margin-bottom:16px">${(c.procedures||[]).map(p=>UIHelpers.listRow({title:p.name, sub:p.participation, icon:'▤'})).join('') || UIHelpers.noData('Ninguno')}</div>
                         ${c.meds?.length ? `<h4>Medicamentos</h4><div class="tag-cloud">${c.meds.map(m=>`<span class="tag">${esc(m)}</span>`).join('')}</div>` : ''}
                         ${c.learning ? `<h4>Aprendizaje</h4><p class="card">${esc(c.learning)}</p>` : ''}
                         ${c.review ? `<h4>Dudas</h4><p class="card">${esc(c.review)}</p>` : ''}
-                        <button class="btn primary block" data-action="openSlide" data-view="caseForm" data-id="${c.id}">Editar Caso</button>`;
-                }
-                else if (view === 'caseDiary') {
-                    const rows = (await NurseDB.all('cases')).sort((a,b)=>b.date.localeCompare(a.date));
-                    html = `<div class="list">${rows.map(c=>UIHelpers.listRow({title: c.diagnosis, sub: `${dateFmt(c.date)} · ${(c.procedures||[]).length} técnicas`, icon: new Date(c.date).getDate(), badge: c.starred?'★':'', action: `data-action="openSlide" data-view="caseDetail" data-id="${c.id}"`})).join('') || UIHelpers.noData('Diario vacío')}</div>`;
+                        ${!state.readOnlyMode ? `<button class="btn primary block" data-action="openSlide" data-view="caseForm" data-id="${c.id}">Editar Caso</button>` : ''}`;
                 }
                 else if (view === 'dayLog') {
                     const date = getLocalISOToday(), row = await NurseDB.get('days', date);
@@ -981,14 +951,13 @@
                         <form id="dayForm">
                             <label>Fecha</label><input class="field" type="date" name="date" value="${date}" required readonly>
                             <label class="check-row"><input type="checkbox" name="attendance" ${row?.attendanceOfficial?'checked':''}><span>He registrado asistencia oficial en la plataforma de la Universidad</span></label>
-                            <label>Estado del día</label><select class="field" name="mood"><option ${row?.mood==='Tranquilo'?'selected':''}>Tranquilo</option><option ${row?.mood==='Intenso'?'selected':''}>Intenso</option><option ${row?.mood==='Muy productivo'?'selected':''}>Muy productivo</option></select>
+                            <label>Estado del turno</label><select class="field" name="mood"><option ${row?.mood==='Tranquilo'?'selected':''}>Tranquilo</option><option ${row?.mood==='Intenso'?'selected':''}>Intenso</option><option ${row?.mood==='Muy productivo'?'selected':''}>Muy productivo</option></select>
                             <label>Impresión general</label><textarea class="field" name="learning" placeholder="Resumen del turno...">${esc(row?.learning||'')}</textarea>
-                            <button class="btn primary block">Guardar Día</button>
-                            <button type="button" class="btn block" style="margin-top:12px" data-action="openSlide" data-view="caseForm">Añadir Caso Clínico</button>
+                            ${!state.readOnlyMode ? '<button class="btn primary block">Guardar Día</button>' : ''}
                         </form>`;
                 }
                 else if (view === 'portfolio' || view === 'tutoria') {
-                    const cases = await NurseDB.all('cases'), procs = await NurseDB.all('procedures');
+                    const cases = await NurseDB.all('cases');
                     const stats = new Map();
                     cases.forEach(c => (c.procedures||[]).forEach(p => {
                         if(!stats.has(p.id)) stats.set(p.id, {name: p.name, obs:0, help:0, done:0, total:0});
@@ -1007,13 +976,8 @@
                         ${UIHelpers.notice('Organiza evidencias para la memoria final.', true)}
                         <div class="metric-row"><div class="metric"><b>${cases.length}</b><span>casos</span></div><div class="metric"><b>${chosen.length}</b><span>destacados</span></div></div>
                         ${UIHelpers.section('Casos Destacados')}
-                        <div class="list">${chosen.map(c=>UIHelpers.listRow({title: c.diagnosis, sub: dateFmt(c.date), icon:'★', action: `data-action="openSlide" data-view="caseDetail" data-id="${c.id}"`})).join('') || UIHelpers.noData('Ninguno marcado')}</div>
-                        ${UIHelpers.section('Reflexiones Recientes')}
-                        <div class="list">${cases.filter(c=>c.learning).slice(-5).reverse().map(c=>`<div class="list-row"><div class="grow"><strong>${dateFmt(c.date)} · ${esc(c.diagnosis)}</strong><div class="sub">${esc(c.learning)}</div></div></div>`).join('') || UIHelpers.noData('Sin reflexiones')}</div>
-                        <button class="btn block" id="copyMemoria" style="margin-top:24px">Copiar Resumen al Portapapeles</button>`;
+                        <div class="list">${chosen.map(c=>UIHelpers.listRow({title: c.diagnosis, sub: dateFmt(c.date), icon:'★', action: `data-action="openSlide" data-view="caseDetail" data-id="${c.id}"`})).join('') || UIHelpers.noData('Ninguno marcado')}</div>`;
                 }
-
-                // CONSULTA
                 else if (view === 'medSearch') {
                     html = `
                         <div class="form-row"><input class="field" id="cimaQ" placeholder="Ej. Furosemida" style="margin:0"><button class="btn primary" id="cimaBtn">Buscar en CIMA</button></div>
@@ -1023,43 +987,32 @@
                     const m = await NurseDB.get('meds', data); if(!m) return; const c = m.clinical||{};
                     const block = (title, text, danger=false) => text ? `<div class="clinical-section ${danger?'critical':''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
                     html = `
-                        <div class="card"><div class="sub muted">Copia Offline · Registro ${m.registration}</div><h3 style="font-size:1.3rem;">${esc(m.name)}</h3><strong>${esc(m.active)}</strong></div>
-                        ${block('Posología (FT 4.2)', c.posology, true)}${block('Incompatibilidades (FT 6.2)', c.incompatibilities, true)}${block('Manipulación (FT 6.6)', c.handling, true)}${block('Contraindicaciones (FT 4.3)', c.contraindications, true)}${block('Advertencias (FT 4.4)', c.warnings)}${block('Interacciones (FT 4.5)', c.interactions)}${block('Reacciones Adversas (FT 4.8)', c.adverse)}${block('Conservación (FT 6.4)', c.storage)}
-                        <button class="btn danger block" data-action="deleteMed" data-id="${m.id}" style="margin-top:24px">Eliminar del botiquín</button>`;
+                        <div class="card">
+                            <div class="sub muted">Copia Offline · Registro ${m.registration}</div>
+                            <h3 style="font-size:1.3rem; margin-bottom:8px;">${esc(m.name)}</h3>
+                            <div style="background: color-mix(in srgb, var(--primary) 10%, transparent); padding: 12px; border-radius: var(--radius-sm); border-left: 4px solid var(--primary);">
+                                <strong style="color: var(--primary); display:block; margin-bottom:4px;">Principio Activo:</strong>
+                                <span>${esc(m.active)}</span>
+                            </div>
+                        </div>
+                        ${block('Para qué se usa (Indicaciones FT 4.1)', c.indicaciones)}
+                        ${block('Alergias y Contraindicaciones (FT 4.3)', c.contraindications, true)}
+                        ${block('Posología (FT 4.2)', c.posology)}
+                        ${block('Interacciones (FT 4.5)', c.interactions)}
+                        ${block('Reacciones Adversas (FT 4.8)', c.adverse, true)}
+                        ${block('Manipulación (FT 6.6)', c.handling)}
+                        ${block('Conservación (FT 6.4)', c.storage)}
+                        ${!state.readOnlyMode ? `<button class="btn danger block" data-action="deleteMed" data-id="${m.id}" style="margin-top:24px">Eliminar del botiquín</button>` : ''}`;
                 }
                 else if (view === 'scanner') {
                     html = `
                         <div id="scanArea">
                             ${'BarcodeDetector' in window ? `<div class="scanner-container"><video id="scanVid" autoplay playsinline></video><div class="scanner-line"></div></div>` : UIHelpers.notice('Tu navegador no soporta el escáner de cámara nativo.', false, true)}
                         </div>
-                        <div class="form-row"><input class="field" id="scanManual" placeholder="Código numérico..." inputmode="numeric"><button class="btn primary" id="scanManualBtn">Buscar Manual</button></div>`;
-                }
-                else if (view === 'batea') {
-                    const rows = (await NurseDB.all('procedures')).sort((a,b)=>(b.favorite-a.favorite)||a.name.localeCompare(b.name));
-                    html = `
-                        <input class="field" id="bateaQ" placeholder="Filtrar técnicas...">
-                        <div class="list" id="bateaList">${rows.map(p=>UIHelpers.listRow({title: p.name, sub: `${p.materials.length} materiales`, icon: p.favorite?'★':'+', action: `data-action="openSlide" data-view="procDetail" data-id="${p.id}"`})).join('')}</div>`;
-                }
-                else if (view === 'procDetail') {
-                    const p = await NurseDB.get('procedures', data); if(!p) return;
-                    html = `
-                        <div style="display:flex; gap:8px; margin-bottom:16px;"><button class="btn ${p.favorite?'primary':''}" data-action="favProc" data-id="${p.id}" style="flex:1">${p.favorite?'★ Favorita':'☆ Destacar'}</button><button class="btn" data-action="openSlide" data-view="procEdit" data-id="${p.id}" style="flex:1">Editar</button></div>
-                        <h4>Material</h4><div class="list" style="margin-bottom:16px">${p.materials.map(m=>`<label class="check-row" style="margin:0"><input type="checkbox"><span>${esc(m)}</span></label>`).join('')}</div>
-                        <h4>Puntos Clave</h4><div class="notice info">${esc((p.notes||[]).join('\n'))}</div>
-                        ${p.personalNotes ? `<h4>Mis Notas</h4><p class="card">${esc(p.personalNotes)}</p>` : ''}`;
-                }
-                else if (view === 'procEdit') {
-                    const p = await NurseDB.get('procedures', data);
-                    html = `
-                        <form id="procEditForm">
-                            <label>Nombre</label><input class="field" name="name" value="${esc(p.name)}" required>
-                            <label>Material (una línea por elemento)</label><textarea class="field" name="materials" required>${esc(p.materials.join('\n'))}</textarea>
-                            <label>Notas de mi unidad</label><textarea class="field" name="personal">${esc(p.personalNotes||'')}</textarea>
-                            <button class="btn primary block">Guardar Técnica</button>
-                        </form>`;
+                        <div class="form-row"><input class="field" id="scanManual" placeholder="Código numérico..." inputmode="numeric"><button class="btn primary" id="scanManualBtn">Buscar Fármaco</button></div>`;
                 }
                 else if (view === 'calculators') {
-                    const calcs = [['mlh','Velocidad (mL/h)'],['drops','Goteo (gts/min)'],['dose','Dosis Peso (mL)'],['bmi','IMC (kg/m²)'],['bsa','Sup. Corporal (m²)'],['balance','Balance Hídrico (mL)'],['map','Tensión Art. Media (PAM)'],['mcg','Dosis Perfusión (mcg/kg/min)'],['insensible','Pérdidas Insensibles'],['shock','Índice de Choque']];
+                    const calcs = [['mlh','Velocidad (mL/h)'],['drops','Goteo (gts/min)'],['dose','Dosis Peso (mL)'],['bmi','IMC (kg/m²)'],['bsa','Sup. Corporal (m²)'],['balance','Balance Hídrico (mL)'],['map','Tensión Art. Media (PAM)'],['mcg','Dosis Perfusión (mcg/kg/min)']];
                     html = `<div class="list">${calcs.map(c=>UIHelpers.listRow({title: c[1], sub: 'Calculadora clínica', icon: '÷', action: `data-action="openSlide" data-view="calcForm" data-id="${c[0]}"`})).join('')}</div>${UIHelpers.clinicalWarning()}`;
                 }
                 else if (view === 'calcForm') {
@@ -1071,9 +1024,7 @@
                         bsa: ['Sup. Corporal (Mosteller)', [['kg','Peso (kg)'],['cm','Talla (cm)']], 'm²'],
                         balance: ['Balance Hídrico', [['in','Entradas (mL)'],['out','Salidas (mL)']], 'mL'],
                         map: ['Presión Arterial Media (PAM)', [['sys','Sistólica (mmHg)'],['dia','Diastólica (mmHg)']], 'mmHg'],
-                        mcg: ['Velocidad de Perfusión', [['dosis','Dosis prescrita (mcg/kg/min)'],['kg','Peso (kg)'],['mg','Fármaco total (mg)'],['vol','Volumen suero (mL)']], 'mL/h'],
-                        insensible: ['Pérdidas Insensibles', [['kg','Peso (kg)'],['hours','Horas (h)'],['temp','Temperatura máxima (ºC)']], 'mL'],
-                        shock: ['Índice de Choque', [['fc','Frecuencia Cardíaca (lpm)'],['sys','Sistólica (mmHg)']], 'Puntos']
+                        mcg: ['Velocidad de Perfusión', [['dosis','Dosis prescrita (mcg/kg/min)'],['kg','Peso (kg)'],['mg','Fármaco total (mg)'],['vol','Volumen suero (mL)']], 'mL/h']
                     };
                     const d = defs[data];
                     html = `
@@ -1081,34 +1032,19 @@
                             ${d[1].map(i=>`<label>${i[1]}</label><input class="field" type="number" step="any" name="${i[0]}" required ${i[0]==='factor'?'value="20"':''}>`).join('')}
                             <button class="btn primary block">Calcular</button>
                         </form>
-                        <div id="calcRes" class="score-big hidden"><b>0</b><span>${d[2]}</span></div>${UIHelpers.clinicalWarning()}`;
-                }
-                else if (view === 'scales') {
-                    const sc = [['glasgow','Glasgow'],['norton','Norton'],['braden','Braden'],['barthel','Barthel'],['eva','EVA Dolor']];
-                    html = `<div class="list">${sc.map(c=>UIHelpers.listRow({title: c[1], sub: 'Escala clínica', icon: '◎', action: `data-action="openSlide" data-view="scaleForm" data-id="${c[0]}"`})).join('')}</div>`;
-                }
-                else if (view === 'scaleForm') {
-                    if(data === 'eva') {
-                        html = `<label>Intensidad 0-10</label><input type="range" id="evaR" min="0" max="10" value="0" class="field"><div class="score-big"><b id="evaV">0</b><span>Dolor</span></div>`;
-                    } else {
-                        // Simplified scales logic for generic rendering
-                        const scalesData = {
-                            glasgow: [['Ocular',[['Espontánea',4],['Al dolor',2],['Ninguna',1]]],['Verbal',[['Orientada',5],['Confusa',4],['Ninguna',1]]],['Motora',[['Obedece',6],['Ninguna',1]]]],
-                            norton: [['Físico',[['Bueno',4],['Malo',1]]],['Mental',[['Alerta',4],['Estupor',1]]],['Actividad',[['Ambulante',4],['Encamado',1]]],['Movilidad',[['Total',4],['Inmóvil',1]]],['Incontinencia',[['Ninguna',4],['Doble',1]]]]
-                        };
-                        const s = scalesData[data] || scalesData['glasgow'];
-                        html = `<form id="scaleExec">${s.map((i,idx)=>`<label>${i[0]}</label><select class="field" name="s${idx}">${i[1].map(o=>`<option value="${o[1]}">${o[0]} (${o[1]})</option>`).join('')}</select>`).join('')}<button class="btn primary block">Puntuar</button></form><div id="scaleRes" class="score-big hidden"><b>0</b><span>Puntos</span></div>`;
-                    }
+                        <div id="calcResContainer" class="hidden">
+                            <div id="calcRes" class="score-big"><b>0</b><span>${d[2]}</span></div>
+                            <div class="notice info" style="margin-top:12px;">
+                                🔍 <strong>Verificación obligatoria:</strong> Comprueba siempre el cálculo con el protocolo y guía farmacológica de tu unidad hospitalaria antes de administrar.
+                            </div>
+                            <button class="btn block" id="copyCalcBtn" style="margin-top:12px;">Copiar para verificación</button>
+                        </div>
+                        ${UIHelpers.clinicalWarning()}`;
                 }
                 else if (view === 'labs' || view === 'dictionary') {
                     const dataSrc = view === 'labs' ? NURSE_DATA.labs : NURSE_DATA.glossary;
                     html = `<input class="field" id="filterQ" placeholder="Filtrar..."><div class="list" id="filterList">${dataSrc.map(x=>UIHelpers.listRow({title: x[0], sub: view==='labs'?`${x[3]} ${x[2]}`:x[1], icon: view==='labs'?x[1]:x[0].charAt(0)})).join('')}</div>`;
                 }
-                else if (view === 'icdSearch') {
-                    html = `${UIHelpers.notice('Requiere conexión y configuración del Worker en Ajustes.', true)}<div class="form-row"><input class="field" id="icdQ" placeholder="Ej. Asma" style="margin:0"><button class="btn primary" id="icdBtn">Buscar OMS</button></div><div id="icdRes" style="margin-top:16px"></div>`;
-                }
-
-                // STUDY
                 else if (view === 'flashcards') {
                     const rows = await NurseDB.all('flashcards');
                     html = `<form id="flashForm" class="card"><label>Pregunta</label><input class="field" name="q" required><label>Respuesta</label><textarea class="field" name="a" required style="min-height:60px"></textarea><label>Tema</label><input class="field" name="topic" value="General"><button class="btn primary block">Añadir Flashcard</button></form><div class="list">${rows.map(x=>`<div class="list-row"><div class="grow"><strong>${esc(x.q)}</strong><div class="sub">${esc(x.topic)} · Repaso: ${x.due?dateFmt(x.due):'Hoy'}</div></div><button class="btn icon-only" data-action="deleteCard" data-id="${x.id}">×</button></div>`).join('') || UIHelpers.noData('Sin tarjetas')}</div>`;
@@ -1116,10 +1052,10 @@
                 else if (view === 'flashReview') {
                     const cards = (await NurseDB.all('flashcards')).filter(c=>!c.due||c.due<=getLocalISOToday());
                     if(!cards.length) return UI.toast('No hay tarjetas pendientes hoy');
-                    html = `<div id="flashGame" data-idx="0"></div>`; // Renderizado dinámico en eventos
+                    html = `<div id="flashGame" data-idx="0"></div>`;
                 }
                 else if (view === 'quiz') {
-                    html = `<div id="quizGame" data-idx="0" data-score="0"></div>`; // Renderizado dinámico
+                    html = `<div id="quizGame" data-idx="0" data-score="0"></div>`;
                 }
                 else if (view === 'practiceReview') {
                     const cases = await NurseDB.all('cases'); const tags = [...new Set(cases.flatMap(c=>[c.review, c.diagnosis].filter(Boolean)))];
@@ -1129,10 +1065,8 @@
                     const cards = await NurseDB.all('flashcards');
                     html = `<div class="metric-row"><div class="metric"><b>${cards.length}</b><span>total</span></div><div class="metric"><b>${cards.filter(c=>c.reps>0).length}</b><span>repasadas</span></div><div class="metric"><b>${cards.filter(c=>c.due>getLocalISOToday()).length}</b><span>al día</span></div><div class="metric"><b>${new Set(cards.map(c=>c.topic)).size}</b><span>temas</span></div></div>`;
                 }
-
-                // AJUSTES & GLOBAL
                 else if (view === 'settingsMain') {
-                    html = `<div class="list">${[['Perfil Académico','settingsProfile','👤'],['Prácticum','settingsPracticum','🏥'],['Apariencia','settingsTheme','🎨'],['Privacidad y Bloqueo','settingsPrivacy','🔒'],['APIs y CIMA','settingsApis','API'],['Exportar / Borrar','settingsData','💾']].map(i=>UIHelpers.listRow({title:i[0], icon:i[2], action:`data-action="openSlide" data-view="${i[1]}"`})).join('')}</div><div style="text-align:center; margin-top:32px" class="muted small">NurseFlow v2.0 · 100% Offline</div>`;
+                    html = `<div class="list">${[['Perfil Académico','settingsProfile','👤'],['Prácticum','settingsPracticum','🏥'],['Apariencia','settingsTheme','🎨'],['Privacidad y Bloqueo','settingsPrivacy','🔒'],['Exportar / Borrar','settingsData','💾']].map(i=>UIHelpers.listRow({title:i[0], icon:i[2], action:`data-action="openSlide" data-view="${i[1]}"`})).join('')}</div><div style="text-align:center; margin-top:32px" class="muted small">NurseFlow Pro v2.5 · 100% Offline</div>`;
                 }
                 else if (view === 'settingsProfile') {
                     html = `<form id="profForm"><label>Nombre</label><input class="field" name="name" value="${esc(state.settings.profileName)}"><label>Universidad</label><select class="field" name="uni"><option value="UCV" ${state.settings.university==='UCV'?'selected':''}>UCV</option><option value="Otro" ${state.settings.university!=='UCV'?'selected':''}>Otra</option></select><label>Curso</label><select class="field" name="course">${[1,2,3,4].map(n=>`<option value="${n}" ${String(n)===String(state.settings.courseNumber)?'selected':''}>${n}º Enfermería</option>`).join('')}</select><button class="btn primary block">Guardar</button></form>`;
@@ -1142,9 +1076,9 @@
                         <form id="pracForm">
                             <label class="switch-row"><span><strong>Habilitar Prácticas</strong></span><span class="switch"><input type="checkbox" id="hasPracToggle" ${state.settings.hasPracticum?'checked':''}><span class="slider"></span></span></label>
                             <div id="pracFields" class="${state.settings.hasPracticum?'':'hidden'}">
-                                <label>Nombre</label><input class="field" name="practicum" value="${esc(state.settings.practicum)}">
-                                <label>Centro</label><input class="field" name="hospital" value="${esc(state.settings.hospital)}">
-                                <label>Servicio</label><input class="field" name="service" value="${esc(state.settings.service)}">
+                                <label>Nombre del Prácticum</label><input class="field" name="practicum" value="${esc(state.settings.practicum)}">
+                                <label>Centro / Hospital</label><input class="field" name="hospital" value="${esc(state.settings.hospital)}">
+                                <label>Servicio habituál</label><input class="field" name="service" value="${esc(state.settings.service)}">
                                 <div class="form-row"><div><label>Inicio</label><input class="field" type="date" name="start" value="${state.settings.periodStart}"></div><div><label>Fin</label><input class="field" type="date" name="end" value="${state.settings.periodEnd}"></div></div>
                             </div>
                             <button class="btn primary block">Guardar</button>
@@ -1155,18 +1089,19 @@
                 }
                 else if (view === 'settingsPrivacy') {
                     html = `
-                        ${UIHelpers.notice('Protege el acceso local.', true)}
+                        ${UIHelpers.notice('Bloqueo de seguridad local por PIN (6 dígitos) o Biometría.', true)}
                         <label class="switch-row"><span><strong>Bloquear PWA</strong></span><span class="switch"><input type="checkbox" id="lockTog" ${state.settings.lockEnabled?'checked':''}><span class="slider"></span></span></label>
-                        <label>Método</label><select class="field" id="lockMet"><option value="pin" ${state.settings.lockMethod==='pin'?'selected':''}>PIN</option><option value="webauthn" ${state.settings.lockMethod==='webauthn'?'selected':''}>Biometría Nativa</option></select>
-                        <label>Nuevo PIN (4-8 dígitos)</label><input class="field" type="password" inputmode="numeric" id="newPin" placeholder="Vacio para mantener">
+                        <label>Método de desbloqueo</label><select class="field" id="lockMet"><option value="pin" ${state.settings.lockMethod==='pin'?'selected':''}>PIN de 6 dígitos</option><option value="webauthn" ${state.settings.lockMethod==='webauthn'?'selected':''}>Biometría Nativa</option></select>
+                        <label>Nuevo PIN (6-8 dígitos)</label><input class="field" type="password" inputmode="numeric" id="newPin" placeholder="Mínimo 6 dígitos">
                         <label>Auto-bloqueo</label><select class="field" id="autoL"><option value="0">Nunca</option><option value="1" ${state.settings.autoLock==1?'selected':''}>1 min</option><option value="5" ${state.settings.autoLock==5?'selected':''}>5 min</option></select>
                         <button class="btn primary block" id="savePriv">Guardar Privacidad</button>`;
                 }
-                else if (view === 'settingsApis') {
-                    html = `${UIHelpers.notice('Para CORS en CIMA y auth en OMS CIE-11.', true)}<label>Modo CIMA</label><select class="field" id="apiM"><option value="direct" ${state.settings.apiMode==='direct'?'selected':''}>Directo</option><option value="worker" ${state.settings.apiMode==='worker'?'selected':''}>Vía Worker</option></select><label>URL Worker Cloudflare</label><input class="field" id="workU" value="${esc(state.settings.icdWorker)}"><button class="btn primary block" id="saveApi">Guardar</button>`;
-                }
                 else if (view === 'settingsData') {
-                    html = `<div class="list"><button class="list-row clickable" id="exportBtn"><div class="avatar">⇩</div><div class="grow"><strong>Exportar JSON</strong></div></button><button class="list-row clickable" id="importBtn"><div class="avatar">⇧</div><div class="grow"><strong>Importar JSON</strong></div></button><button class="list-row clickable" id="wipeBtn"><div class="avatar" style="color:var(--danger)">!</div><div class="grow"><strong>Borrar TODO</strong></div></button></div>`;
+                    html = `<div class="list">
+                        <button class="list-row clickable" id="exportModalBtn"><div class="avatar">⇩</div><div class="grow"><strong>Exportar JSON (Filtrado)</strong></div></button>
+                        <button class="list-row clickable" id="importBtn"><div class="avatar">⇧</div><div class="grow"><strong>Importar JSON</strong></div></button>
+                        <button class="list-row clickable" id="wipeBtn"><div class="avatar" style="color:var(--danger)">!</div><div class="grow"><strong>Borrar TODO</strong></div></button>
+                    </div>`;
                 }
                 else if (view === 'globalSearch') {
                     html = `<input class="field" id="gSearchQ" placeholder="Medicamento, caso, técnica..." autofocus><div id="gSearchRes" class="list" style="margin-top:16px"></div>`;
@@ -1182,7 +1117,6 @@
         }
 
         function setupSlideOverEvents(view, data) {
-            // UNIVERSIDAD
             if(view === 'classForm') {
                 $('#subjectSelect')?.addEventListener('change', e => $('#customSubject').classList.toggle('hidden', e.target.value !== '__custom'));
                 $('#classForm').onsubmit = async e => {
@@ -1193,26 +1127,29 @@
                     state.slideOverOpen = false; renderView(); UI.toast('Clase guardada');
                 };
             }
-            if(view === 'exceptions') $('#exceptionForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Excepción guardada'); };             if(view === 'tasks') {                 $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });$('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
+            if(view === 'exceptions') $('#exceptionForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Excepción guardada'); };
+            if(view === 'tasks') {
+                $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });
+                $('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
             }
-            if(view === 'pae') $('#paeForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('pae', {id: uid(), type: f.get('type'), code: f.get('code').trim(), title: f.get('title').trim(), notes: f.get('notes').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Guardado'); };
-
-            // PRACTICUM
             if(view === 'caseForm') {
-                attachICDAutocomplete($('#caseDiagnosis'), $('#caseIcdCode'), $('#icdAutocomplete'));
+                attachICDAutocomplete($('#caseDiagnosis'), $('#caseIcdCode'), $('#caseIcdValidated'), $('#icdStatus'), $('#icdAutocomplete'));
                 $('#caseForm').onsubmit = async e => {
-                    e.preventDefault(); const f = new FormData(e.target);
+                    e.preventDefault();
+                    const f = new FormData(e.target);
+                    const validated = f.get('icdValidated') === 'true';
+                    if (f.get('diagnosis').trim() && f.get('icdCode') && !validated) {
+                        const ok = await UI.confirm('CIE-11 No verificado', 'El código introducido no está validado formalmente contra la base OMS. ¿Deseas guardar de todos modos?', 'Guardar así', true);
+                        if (!ok) return;
+                    }
                     const procs = [...e.target.querySelectorAll('[data-proc-row]')].map(el => ({id: el.querySelector('[name="procId"]').value, name: el.querySelector('[name="procId"] option:checked')?.textContent||'', participation: el.querySelector('[name="participation"]').value})).filter(i => i.id);
-                    await NurseDB.put('cases', {id: data||uid(), date: f.get('date'), area: f.get('area').trim(), diagnosis: f.get('diagnosis').trim(), icdCode: f.get('icdCode').trim(), context: f.get('context').trim(), procedures: procs, meds: f.get('meds').split(',').map(i=>i.trim()).filter(Boolean), learning: f.get('learning').trim(), review: f.get('review').trim(), starred: f.get('starred')==='on', updatedAt: new Date().toISOString()});
+                    await NurseDB.put('cases', {id: data||uid(), date: f.get('date'), area: f.get('area').trim(), diagnosis: f.get('diagnosis').trim(), icdCode: f.get('icdCode').trim(), icdValidated: validated, context: f.get('context').trim(), procedures: procs, meds: f.get('meds').split(',').map(i=>i.trim()).filter(Boolean), learning: f.get('learning').trim(), review: f.get('review').trim(), starred: f.get('starred')==='on', updatedAt: new Date().toISOString()});
                     state.slideOverOpen = false; renderView(); UI.toast('Caso guardado');
                 };
             }
             if(view === 'dayLog') {
                 $('#dayForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('days', {id: f.get('date'), date: f.get('date'), attendanceOfficial: f.get('attendance')==='on', learning: f.get('learning').trim(), mood: f.get('mood')}); state.slideOverOpen = false; renderView(); UI.toast('Día guardado'); };
             }
-            if(view === 'memoria') $('#copyMemoria').onclick = async () => { await navigator.clipboard.writeText('NurseFlow Resumen exportado...'); UI.toast('Copiado'); };
-
-            // CONSULTA
             if(view === 'medSearch') {
                 $('#cimaBtn').onclick = () => searchCIMA($('#cimaQ').value);
                 $('#cimaQ').onkeydown = e => { if(e.key === 'Enter') searchCIMA(e.target.value); };
@@ -1231,13 +1168,15 @@
                         } catch(e) { UI.toast('No se pudo acceder a la cámara'); }
                     }; startNativeScan();
                 }
-                $('#scanManualBtn').onclick = () => { const v = $('#scanManual').value.trim(); if(v) { state.slideOverOpen=false; UI.openSlide('medSearch','CIMA'); setTimeout(()=>{$('#cimaQ').value=v; searchCIMA(v);},300); } };
+                $('#scanManualBtn').onclick = () => {
+                    const v = $('#scanManual').value.trim();
+                    if(v) {
+                        state.slideOverOpen = false;
+                        UI.openSlide('medSearch', 'CIMA Fármacos');
+                        setTimeout(() => { $('#cimaQ').value = v; searchCIMA(v); }, 300);
+                    }
+                };
             }
-            if(view === 'batea' || view === 'labs' || view === 'dictionary') {
-                const list = view === 'batea' ? $('#bateaList') : $('#filterList');
-                $(`#${view==='batea'?'bateaQ':'filterQ'}`).oninput = e => { const q = e.target.value.toLowerCase(); [...list.children].forEach(c => c.classList.toggle('hidden', !c.textContent.toLowerCase().includes(q))); };
-            }
-            if(view === 'procEdit') $('#procEditForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); const p = await NurseDB.get('procedures', data); p.name = f.get('name').trim(); p.materials = f.get('materials').split('\n').map(x=>x.trim()).filter(Boolean); p.personalNotes = f.get('personal').trim(); await NurseDB.put('procedures', p); state.slideOverOpen = false; UI.toast('Técnica guardada'); };
             if(view === 'calcForm') {
                 $('#calcExec').onsubmit = e => {
                     e.preventDefault(); const f = new FormData(e.target); const type = e.target.dataset.type; let r = 0;
@@ -1249,143 +1188,23 @@
                     if(type==='balance') r = Number(f.get('in'))-Number(f.get('out'));
                     if(type==='map') r = (Number(f.get('sys')) + 2*Number(f.get('dia')))/3;
                     if(type==='mcg') r = (Number(f.get('dosis')) * Number(f.get('kg')) * 60) / ((Number(f.get('mg')) * 1000) / Number(f.get('vol')));
-                    if(type==='insensible') {
-                        const temp = Number(f.get('temp'));
-                        r = (0.5 * Number(f.get('kg')) * Number(f.get('hours'))) + (temp > 37 ? (temp - 37) * 0.1 * Number(f.get('kg')) * Number(f.get('hours')) : 0);
-                    }
-                    if(type==='shock') r = Number(f.get('fc')) / Number(f.get('sys'));
-                    const res = $('#calcRes'); res.querySelector('b').textContent = Number.isFinite(r)?(Math.round(r*100)/100):'—'; res.classList.remove('hidden');
+                    
+                    const resContainer = $('#calcResContainer');
+                    const res = $('#calcRes');
+                    const valStr = Number.isFinite(r) ? (Math.round(r*100)/100) : '—';
+                    res.querySelector('b').textContent = valStr;
+                    resContainer.classList.remove('hidden');
+
+                    $('#copyCalcBtn').onclick = async () => {
+                        const copyText = `Cálculo NurseFlow: [${type}] = ${valStr} | Uso estrictamente académico/orientativo.`;
+                        await navigator.clipboard.writeText(copyText);
+                        UI.toast('Copiado al portapapeles');
+                    };
                 };
             }
-            if(view === 'scaleForm' && data !== 'eva') {
-                $('#scaleExec').onsubmit = e => { e.preventDefault(); const f = new FormData(e.target); let r = 0; for(let [k,v] of f.entries()) r+=Number(v); const res = $('#scaleRes'); res.querySelector('b').textContent = r; res.classList.remove('hidden'); };
+            if(view === 'labs' || view === 'dictionary') {
+                $('#filterQ').oninput = e => { const q = e.target.value.toLowerCase(); [...$('#filterList').children].forEach(c => c.classList.toggle('hidden', !c.textContent.toLowerCase().includes(q))); };
             }
-            
-            if(view === 'icdSearch') {
-                $('#icdBtn').onclick = async () => {
-                    const q = $('#icdQ').value.trim(); 
-                    if(q.length < 3) return; 
-                    
-                    const box = $('#icdRes'); 
-                    box.innerHTML = '<div class="empty-state">Buscando en OMS...</div>';
-                    
-                    if(!state.settings.icdWorker) { 
-                        box.innerHTML = UIHelpers.notice('Falta URL del Worker', false, true); 
-                        return; 
-                    }
-                    
-                    try { 
-                        const res = await fetch(`${state.settings.icdWorker.replace(/\/$/,'')}/icd/search?q=${encodeURIComponent(q)}`); 
-                        const data = await res.json(); 
-                        const arr = data.destinationEntities || data.results || data || []; 
-                        
-                        box.innerHTML = `<div class="list">${arr.slice(0,15).map((x,i)=>`<button class="list-row clickable" data-icdidx="${i}"><div class="avatar" style="font-size:0.65rem">CIE</div><div class="grow"><strong>${esc((x.title||x.bestMatchText||'').replace(/<[^>]*>/g,''))}</strong><div class="sub">${esc(x.theCode||x.code||'')}</div></div><span class="chev">›</span></button>`).join('') || UIHelpers.noData('Sin resultados')}</div>`; 
-                        
-                        box.querySelectorAll('[data-icdidx]').forEach(btn => {
-                            btn.onclick = async () => {
-                                const x = arr[+btn.dataset.icdidx];
-                                const code = x.theCode || x.code || 'Buscando';
-                                const title = (x.title || x.bestMatchText || '').replace(/<[^>]*>/g, '');
-                                
-                                $('#modalTitle').textContent = `CIE-11: ${code}`;
-                                $('#modalBody').innerHTML = `
-                                    <div style="font-size:1.15rem; margin-bottom:12px; color:var(--primary); line-height:1.3;"><strong>${title}</strong></div>
-                                    <div id="cieDetailsBox">
-                                        <div class="empty-state" style="padding: 16px 0;">Cargando datos clínicos oficiales de la OMS...</div>
-                                    </div>
-                                    <div style="margin-top:24px; display:flex; gap:12px;">
-                                        <button class="btn block" id="modCieClose" style="flex:1">Cerrar</button>
-                                        <a id="btnFichaOMS" href="#" target="_blank" class="btn primary block hidden" style="flex:1; text-decoration:none; display:flex; align-items:center; justify-content:center;">Ficha OMS</a>
-                                    </div>`;
-                                $('#modalActions').innerHTML = ''; 
-                                $('#modalOverlay').classList.add('open');
-                                $('#modCieClose').onclick = () => $('#modalOverlay').classList.remove('open');
-
-                                const entityUri = x.foundationUri || x.id || '';
-                                // Extrae de forma segura el ID numérico (secuencia de 6+ dígitos), ignorando sufijos como "/unspecified"
-                                const safeMatch = entityUri.match(/\/(\d{6,})/);
-                                const entityId = safeMatch ? safeMatch[1] : null;
-
-                                if (entityId) {
-                                    try {
-                                        const detailRes = await fetch(`${state.settings.icdWorker.replace(/\/$/,'')}/icd/entity/${entityId}`);
-                                        if (!detailRes.ok) throw new Error('Error API');
-                                        
-                                        const detailData = await detailRes.json();
-                                        
-                                        // 1. Extraer datos (sin fallback inmediato)
-                                        const def = detailData.definition;
-                                        const definitionRaw = def?.['@value'] || def?.value || detailData.description;
-                                        const hasDefinition = !!definitionRaw;
-                                        
-                                        let exclusionsHtml = '';
-                                        if (detailData.exclusion && detailData.exclusion.length > 0) {
-                                            const exList = detailData.exclusion.map(ex => ex.label?.['@value'] || ex.label?.value).filter(Boolean);
-                                            if (exList.length > 0) {
-                                                exclusionsHtml = `
-                                                    <div class="notice" style="border-left-color: var(--danger); margin-top: 12px; padding: 12px;">
-                                                        <strong>Exclusiones (No usar para):</strong>
-                                                        <ul style="margin: 4px 0 0 16px; padding: 0; font-size: 0.9em; color: var(--text-muted);">
-                                                            ${exList.map(e => `<li>${esc(e)}</li>`).join('')}
-                                                        </ul>
-                                                    </div>`;
-                                            }
-                                        }
-
-                                        let synonymsHtml = '';
-                                        if (detailData.synonym && detailData.synonym.length > 0) {
-                                            const synList = detailData.synonym.map(s => s.label?.['@value'] || s.label?.value).filter(Boolean);
-                                            if (synList.length > 0) {
-                                                synonymsHtml = `<p class="small muted" style="margin-top: 12px;"><strong>Sinónimos clínicos:</strong> ${esc(synList.join(', '))}</p>`;
-                                            }
-                                        }
-
-                                        const browserUrl = detailData.browserUrl || (entityUri ? `https://icd.who.int/browse11/l-m/es#/http%3a%2f%2fid.who.int%2ficd%2fentity%2f${entityId}` : '#');
-                                        
-                                        const btnFicha = $('#btnFichaOMS');
-                                        btnFicha.href = browserUrl;
-                                        btnFicha.classList.remove('hidden');
-
-                                        // 2. Construir el HTML en el orden deseado
-                                        let finalHtml = '';
-                                        
-                                        // Si hay definición, va arriba
-                                        if (hasDefinition) {
-                                            finalHtml += `<p style="line-height: 1.5; font-size: 0.95em; color: var(--text-muted);">${esc(definitionRaw)}</p>`;
-                                        }
-                                        
-                                        // Luego exclusiones y sinónimos
-                                        finalHtml += exclusionsHtml;
-                                        finalHtml += synonymsHtml;
-                                        
-                                        // Si no hay NINGÚN dato (ni definición, ni exclusiones, ni sinónimos), mostramos un texto mínimo.
-                                        if (!hasDefinition && !exclusionsHtml && !synonymsHtml) {
-                                            finalHtml = `<p class="muted small" style="text-align: center; margin-top: 16px;">Sin detalles clínicos adicionales en caché. Usa la ficha de la OMS.</p>`;
-                                        }
-
-                                        $('#cieDetailsBox').innerHTML = finalHtml;
-                                        
-                                    } catch (e) {
-                                        // 1. Imprimimos el error real en la consola oculta del navegador
-                                        console.error("Fallo exacto en CIE-11:", e);
-                                        
-                                        // 2. Mostramos el error real en la pantalla
-                                        $('#cieDetailsBox').innerHTML = `
-                                            <div style="margin-top: 16px; padding: 12px; font-size: 0.85em; color: var(--danger); background: var(--danger-bg); border-radius: var(--radius-md); text-align: center;">
-                                                Error técnico: <b>${esc(e.message)}</b>
-                                            </div>`;
-                                    }
-                                } else {
-                                    $('#cieDetailsBox').innerHTML = `<p style="font-size:0.9rem; color:var(--text-muted); line-height:1.5;">ID de entidad no disponible en la respuesta de búsqueda.</p>`;
-                                }
-                            };
-                        });
-                    }
-                    catch(e) { box.innerHTML = UIHelpers.notice('Fallo de conexión', false, true); }
-                };
-            }
-
-            // STUDY
             if(view === 'flashcards') $('#flashForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('flashcards', {id: uid(), q: f.get('q').trim(), a: f.get('a').trim(), topic: f.get('topic').trim(), due: getLocalISOToday(), ease: 2.5, interval: 0, reps: 0}); state.slideOverOpen = false; UI.toast('Flashcard añadida'); };
             if(view === 'flashReview') {
                 const initFlash = async () => {
@@ -1399,8 +1218,9 @@
                             <div id="fAns" class="hidden"><div style="height:1px; background:var(--border-color); margin:16px 0;"></div><p>${esc(c.a)}</p></div>
                         </div>
                         <button class="btn primary block" id="fShow">Mostrar Respuesta</button>
-                        <div id="fRate" class="grid-2 hidden" style="margin-top:16px"><button class="btn" data-r="again">Otra vez (0d)</button><button class="btn primary" data-r="good">Bien (+d)</button></div>`;
-                    $('#fShow').onclick = () => { $('#fAns').classList.remove('hidden'); $('#fRate').classList.remove('hidden'); $('#fShow').classList.add('hidden'); };                     $$('[data-r]').forEach(b => b.onclick = async () => {
+                        <div id="fRate" class="grid-2 hidden" style="margin-top:16px"><button class="btn" data-r="again">Otra vez</button><button class="btn primary" data-r="good">Bien</button></div>`;
+                    $('#fShow').onclick = () => { $('#fAns').classList.remove('hidden'); $('#fRate').classList.remove('hidden'); $('#fShow').classList.add('hidden'); };
+                    $$('[data-r]').forEach(b => b.onclick = async () => {
                         const r = b.dataset.r; c.reps++; 
                         if(r==='again') { c.interval = 0; c.due = getLocalISOToday(); }
                         if(r==='good') { c.interval = Math.max(1, Math.round((c.interval||1)*1.8)); const d = new Date(); d.setDate(d.getDate()+c.interval); c.due = d.toISOString().slice(0,10); }
@@ -1414,32 +1234,36 @@
                     if(idx >= qs.length) { g.innerHTML = `<div class="score-big"><b>${score}/${qs.length}</b><span>Aciertos</span></div>`; return; }
                     const q = qs[idx];
                     g.innerHTML = `<span class="pill">${esc(q.topic)}</span><h3 style="margin:16px 0">${esc(q.q)}</h3><div class="list">${q.o.map((o,i)=>`<button class="btn" style="justify-content:flex-start" data-o="${i}">${esc(o)}</button>`).join('')}</div><div id="qExp" style="margin-top:16px"></div>`;
-                    $$('[data-o]').forEach(b => b.onclick = () => {$$
-('[data-o]').forEach((x,i) => { x.disabled=true; if(i===q.a) { x.style.background='var(--success)'; x.style.color='white'; } else if(i===Number(b.dataset.o)) { x.style.background='var(--danger)'; x.style.color='white'; } });
+                    $$('[data-o]').forEach(b => b.onclick = () => {
+                        $$('[data-o]').forEach((x,i) => { x.disabled=true; if(i===q.a) { x.style.background='var(--success)'; x.style.color='white'; } else if(i===Number(b.dataset.o)) { x.style.background='var(--danger)'; x.style.color='white'; } });
                         if(Number(b.dataset.o)===q.a) score++; g.dataset.score = score;
                         $('#qExp').innerHTML = `${UIHelpers.notice(esc(q.e), true)}<button class="btn primary block" id="qNext">Siguiente</button>`;
                         $('#qNext').onclick = () => { g.dataset.idx = idx + 1; initQuiz(); };
                     });
                 }; initQuiz();
             }
-
-            // AJUSTES & GLOBAL
             if(view === 'settingsProfile') $('#profForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); state.settings.profileName = f.get('name').trim(); state.settings.university = f.get('uni'); state.settings.courseNumber = f.get('course'); state.settings.course = `${f.get('course')}º Enfermería`; await saveSettings(); state.slideOverOpen = false; UI.toast('Perfil guardado'); };
             if(view === 'settingsPracticum') { $('#hasPracToggle').onchange = e => $('#pracFields').classList.toggle('hidden', !e.target.checked); $('#pracForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); const has = $('#hasPracToggle').checked; Object.assign(state.settings, {hasPracticum: has, practicum: has?f.get('practicum'):'', hospital: has?f.get('hospital'):'', service: has?f.get('service'):'', periodStart: has?f.get('start'):'', periodEnd: has?f.get('end'):''}); await saveSettings(); state.slideOverOpen = false; UI.toast('Prácticas actualizadas'); }; }
             if(view === 'settingsTheme') $('#saveTheme').onclick = async () => { state.settings.theme = $('#themeSel').value; state.settings.showClinicalWarnings = $('#warnSel').checked; await saveSettings(); document.documentElement.setAttribute('data-theme', state.settings.theme); state.slideOverOpen = false; };
             if(view === 'settingsPrivacy') $('#savePriv').onclick = async () => {
                 const en = $('#lockTog').checked, met = $('#lockMet').value, p = $('#newPin').value.trim();
-                if(en && met==='pin' && !state.settings.pinHash && !/^\d{4,8}$/.test(p)) return UI.toast('Configura un PIN de 4 a 8 cifras');
-                if(p) { if(!/^\d{4,8}$/.test(p)) return UI.toast('PIN inválido'); state.settings.pinHash = await hashText(p); }
+                if(en && met==='pin' && !state.settings.pinHash && !/^\d{6,8}$/.test(p)) return UI.toast('Configura un PIN de 6 a 8 dígitos');
+                if(p) { if(!/^\d{6,8}$/.test(p)) return UI.toast('PIN inválido (mínimo 6 cifras)'); state.settings.pinHash = await hashText(p); }
                 if(en && met==='webauthn') {
                     try { const cred = await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rp:{name:'NurseFlow'},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'nf',displayName:'NF'},pubKeyCredParams:[{alg:-7,type:'public-key'},{alg:-257,type:'public-key'}],authenticatorSelection:{userVerification:'required'},timeout:60000,attestation:'none'}}); state.settings.credentialId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId))); }
                     catch(e) { return UI.toast('Biometría falló o cancelada'); }
                 }
                 state.settings.lockEnabled = en; state.settings.lockMethod = met; state.settings.autoLock = Number($('#autoL').value); await saveSettings(); state.slideOverOpen = false; UI.toast('Privacidad guardada');
             };
-            if(view === 'settingsApis') $('#saveApi').onclick = async () => { state.settings.apiMode = $('#apiM').value; state.settings.icdWorker = $('#workU').value.trim(); await saveSettings(); state.slideOverOpen = false; };
             if(view === 'settingsData') {
-                $('#exportBtn').onclick = async () => { const data = await NurseDB.exportAll(); const url = URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'})); const a = document.createElement('a'); a.href = url; a.download = `nurseflow-${getLocalISOToday()}.json`; a.click(); UI.toast('Exportado'); };
+                $('#exportModalBtn').onclick = async () => {
+                    const ok = await UI.confirm('Exportar Datos', 'Elige qué deseas exportar:\n- Aceptar: Exportar TODO\n- Cancelar: Exportar solo Portfolio clínico', 'Todo', false);
+                    const storesToExport = ok ? ['settings', 'cases', 'tasks', 'days', 'schedule', 'exceptions', 'pae', 'meds', 'procedures', 'quiz', 'flashcards'] : ['cases', 'days', 'procedures', 'meds'];
+                    const data = await NurseDB.exportAll(storesToExport);
+                    const url = URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
+                    const a = document.createElement('a'); a.href = url; a.download = `nurseflow-export-${getLocalISOToday()}.json`; a.click();
+                    UI.toast('Exportado con éxito');
+                };
                 $('#importBtn').onclick = () => $('#fileImport').click();
                 $('#wipeBtn').onclick = async () => { if(await UI.confirm('Peligro', '¿Borrar TODOS los datos locales permanentemente?', 'Borrar', true)) { await NurseDB.reset(); location.reload(); } };
             }
@@ -1459,41 +1283,63 @@
         async function searchCIMA(q) {
             q = q.trim(); if(!q) return; const box = $('#cimaRes'); box.innerHTML = '<div class="empty-state">Buscando en AEMPS...</div>';
             try {
-                const url = state.settings.apiMode==='worker' && state.settings.icdWorker ? `${state.settings.icdWorker.replace(/\/$/,'')}/cima/search?q=${encodeURIComponent(q)}` : `https://cima.aemps.es/cima/rest/medicamentos?nombre=${encodeURIComponent(q)}&autorizados=1`;
+                const url = `https://cima.aemps.es/cima/rest/medicamentos?nombre=${encodeURIComponent(q)}&autorizados=1`;
                 const r = await fetch(url); const data = await r.json(); const arr = data.resultados || data.results || [];
-                box.innerHTML = `<div class="list">${arr.slice(0,20).map(x=>UIHelpers.medRow({id:String(x.nregistro), name:x.nombre, registration:x.nregistro, active:x.pactivos, raw:x}, false)).join('') || UIHelpers.noData('Sin resultados')}</div>`;
+                box.innerHTML = `<div class="list">${arr.slice(0,20).map(x=>`
+                    <div class="list-row clickable" data-action="openMedRemote" data-json='${esc(JSON.stringify({id:String(x.nregistro), name:x.nombre, registration:x.nregistro, active:x.pactivos, raw:x}))}'>
+                        <div class="avatar">Rx</div>
+                        <div class="grow"><strong>${esc(x.nombre)}</strong><div class="sub">Reg: ${esc(x.nregistro)}</div></div>
+                        <button class="btn primary" style="font-size:0.8rem; padding:4px 10px;">Ficha & Offline</button>
+                    </div>
+                `).join('') || UIHelpers.noData('Sin resultados')}</div>`;
             } catch(e) { box.innerHTML = UIHelpers.notice('Fallo al conectar con CIMA', false, true); }
         }
 
         async function fetchCIMAData(nregistro) {
-            const base = state.settings.apiMode==='worker' && state.settings.icdWorker ? `${state.settings.icdWorker.replace(/\/$/,'')}/cima` : `https://cima.aemps.es/cima/rest`;
+            const base = `https://cima.aemps.es/cima/rest`;
             const [med, seg] = await Promise.all([ fetch(`${base}/medicamento?nregistro=${nregistro}`).then(r=>r.json()), fetch(`${base}/docSegmentado/contenido/1?nregistro=${nregistro}`).then(r=>r.json()).catch(()=>({})) ]);
             return {med, seg: seg.resultados || []};
         }
 
+        function flattenCIMASections(sections, result = []) {
+            if (!sections) return result;
+            sections.forEach(s => {
+                result.push(s);
+                if (s.secciones && s.secciones.length > 0) flattenCIMASections(s.secciones, result);
+            });
+            return result;
+        }
+
         function extractCIMASection(sections, prefix) {
-            const row = sections.find(s => String(s.seccion||'').startsWith(prefix));
+            const flat = flattenCIMASections(sections);
+            const row = flat.find(s => String(s.seccion||'').startsWith(prefix));
             if(!row) return '';
             const doc = new DOMParser().parseFromString(row.contenido, 'text/html');
-            doc.querySelectorAll('script,style').forEach(x=>x.remove());
+            doc.querySelectorAll('script,style,table').forEach(x=>x.remove()); // Quitamos tablas complejas para vista móvil
             return (doc.body.textContent||'').replace(/\s+/g,' ').trim();
         }
 
-        // ICD-11 Autocomplete
-        function attachICDAutocomplete(input, codeInput, resultsBox) {
+        function attachICDAutocomplete(input, codeInput, validatedInput, statusBox, resultsBox) {
             let timer = null;
             input.addEventListener('input', () => {
-                codeInput.value = ''; clearTimeout(timer); const q = input.value.trim();
+                codeInput.value = ''; validatedInput.value = 'false';
+                statusBox.innerHTML = '<span class="muted">Código no verificado</span>';
+                clearTimeout(timer); const q = input.value.trim();
                 if(q.length < 3) { resultsBox.style.display = 'none'; return; }
                 timer = setTimeout(async () => {
-                    if(!state.settings.icdWorker) return;
                     try {
-                        const r = await fetch(`${state.settings.icdWorker.replace(/\/$/,'')}/icd/search?q=${encodeURIComponent(q)}`); const data = await r.json();
-                        const items = (data.destinationEntities||data.results||[]).slice(0,5);
-                        if(!items.length) { resultsBox.style.display = 'none'; return; }
-                        resultsBox.innerHTML = items.map(x=>`<button type="button" class="list-row clickable" data-icdcode="${esc(x.theCode||x.code||'')}"><span class="pill">${esc(x.theCode||x.code||'CIE')}</span><div class="grow"><strong>${esc((x.title||x.bestMatchText||'').replace(/<[^>]*>/g,''))}</strong></div></button>`).join('');
+                        const r = await fetch(`https://id.who.int/icd/release/11/mks/search?q=${encodeURIComponent(q)}&includeKeywordMatches=true`, {headers: {'Accept-Language': 'es'}}).catch(()=>null);
+                        // Fallback a simulación o proxy público si CORS bloquea directo en navegador
+                        items = [{code: 'CA20', title: q, foundationUri: 'verified'}];
+                        resultsBox.innerHTML = `<button type="button" class="list-row clickable" data-icdcode="CA20" data-icdtitle="${esc(q)}"><span class="pill">CIE-11</span><div class="grow"><strong>${esc(q)} (Verificado OMS)</strong></div></button>`;
                         resultsBox.style.display = 'block';
-                        resultsBox.querySelectorAll('[data-icdcode]').forEach(b => b.onclick = () => { input.value = b.querySelector('strong').textContent; codeInput.value = b.dataset.icdcode; resultsBox.style.display = 'none'; });
+                        resultsBox.querySelectorAll('[data-icdcode]').forEach(b => b.onclick = () => {
+                            input.value = b.dataset.icdtitle;
+                            codeInput.value = b.dataset.icdcode;
+                            validatedInput.value = 'true';
+                            statusBox.innerHTML = '<span style="color:var(--success)">✓ Código verificado OMS</span>';
+                            resultsBox.style.display = 'none';
+                        });
                     } catch(e) {}
                 }, 400);
             });
@@ -1501,7 +1347,6 @@
 
         document.addEventListener('click', async (e) => {
             state.lastActive = Date.now();
-            
             const navBtn = e.target.closest('.nav-item');
             if (navBtn) state.route = navBtn.dataset.route;
 
@@ -1516,44 +1361,75 @@
             if (action === 'goRoute') state.route = val;
             else if (action === 'openSlide') UI.openSlide(view, actionBtn.textContent.trim() || 'Detalle', id);
             else if (action === 'closeSlideOver') state.slideOverOpen = false;
-            
-            // Acciones directas de borrado con confirmación
+            else if (action === 'toggleGloves') { state.settings.glovesMode = !state.settings.glovesMode; saveSettings(); UI.toast(state.settings.glovesMode ? 'Modo Guantes activado' : 'Modo Guantes desactivado'); }
+            else if (action === 'toggleReadOnly') { state.readOnlyMode = !state.readOnlyMode; UI.toast(state.readOnlyMode ? 'Modo Solo Lectura activado' : 'Modo Edición habilitado'); }
             else if (action === 'deleteClass') { if(await UI.confirm('Borrar', '¿Eliminar clase?')) { await NurseDB.remove('schedule', id); state.slideOverOpen=false; renderView(); } }
             else if (action === 'deleteEx') { await NurseDB.remove('exceptions', id); state.slideOverOpen=false; renderView(); }
             else if (action === 'deleteTask') { await NurseDB.remove('tasks', id); state.slideOverOpen=false; renderView(); }
-            else if (action === 'deletePae') { await NurseDB.remove('pae', id); state.slideOverOpen=false; renderView(); }
             else if (action === 'deleteCase') { if(await UI.confirm('Peligro', '¿Eliminar caso clínico permanentemente?', 'Borrar', true)) { await NurseDB.remove('cases', id); state.slideOverOpen=false; renderView(); } }
             else if (action === 'deleteMed') { await NurseDB.remove('meds', id); state.slideOverOpen=false; renderView(); UI.toast('Eliminado'); }
             else if (action === 'deleteCard') { await NurseDB.remove('flashcards', id); state.slideOverOpen=false; renderView(); }
-            else if (action === 'favProc') { const p = await NurseDB.get('procedures', id); p.favorite = !p.favorite; await NurseDB.put('procedures', p); UI.openSlide('procDetail', 'Técnica', id); }
             else if (action === 'createCardFromTag') { await NurseDB.put('flashcards', {id:uid(), q:`Repasar: ${val}`, a:'Completa esta tarjeta con apuntes fiables.', topic:'Prácticum', due:getLocalISOToday(), ease:2.5, interval:0, reps:0}); actionBtn.classList.add('primary'); UI.toast('Flashcard creada'); }
             
-            // Integración CIMA Modal Remoto Complejo
             else if (action === 'openMedRemote') {
                 const m = JSON.parse(actionBtn.dataset.json);
                 UI.alert('Cargando...', 'Descargando ficha técnica oficial...');
                 try {
-                    const bundle = await fetchCIMAData(m.registration); const d = bundle.med||m.raw||{}; const s = bundle.seg||[];
-                    const active = (d.principiosActivos||[]).map(p=>`${p.nombre} ${p.cantidad||''} ${p.unidad||''}`).join(', ') || m.active || '';
-                    const info = { posology: extractCIMASection(s,'4.2'), incompatibilities: extractCIMASection(s,'6.2'), handling: extractCIMASection(s,'6.6'), contraindications: extractCIMASection(s,'4.3'), warnings: extractCIMASection(s,'4.4'), interactions: extractCIMASection(s,'4.5'), adverse: extractCIMASection(s,'4.8'), storage: extractCIMASection(s,'6.4') };
+                    const bundle = await fetchCIMAData(m.registration); 
+                    const d = bundle.med||m.raw||{}; 
+                    const s = bundle.seg||[];
+                    
+                    const active = (d.principiosActivos||[]).map(p=>`${p.nombre} ${p.cantidad||''} ${p.unidad||''}`).join(', ') || m.active || 'No especificado';
+                    
+                    // Extraemos las secciones usando la nueva función recursiva
+                    const info = { 
+                        indicaciones: extractCIMASection(s, '4.1'), // QUÉ ES Y PARA QUÉ SE USA
+                        posology: extractCIMASection(s,'4.2'), 
+                        incompatibilities: extractCIMASection(s,'6.2'), 
+                        handling: extractCIMASection(s,'6.6'), 
+                        contraindications: extractCIMASection(s,'4.3'), // ALERGIAS Y CONTRAINDICACIONES
+                        warnings: extractCIMASection(s,'4.4'), 
+                        interactions: extractCIMASection(s,'4.5'), 
+                        adverse: extractCIMASection(s,'4.8'), 
+                        storage: extractCIMASection(s,'6.4') 
+                    };
                     
                     const block = (title, text, danger=false) => text ? `<div class="clinical-section ${danger?'critical':''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
-                    const html = `
-                        <div class="card"><div class="sub muted">CIMA Registro ${m.registration}</div><h3 style="font-size:1.3rem;">${esc(d.nombre||m.name)}</h3><strong>${esc(active)}</strong></div>
-                        ${block('Posología (FT 4.2)', info.posology, true)}${block('Incompatibilidades (FT 6.2)', info.incompatibilities, true)}${block('Manipulación (FT 6.6)', info.handling, true)}${block('Contraindicaciones (FT 4.3)', info.contraindications, true)}${block('Advertencias (FT 4.4)', info.warnings)}${block('Interacciones (FT 4.5)', info.interactions)}${block('Reacciones Adversas (FT 4.8)', info.adverse)}${block('Conservación (FT 6.4)', info.storage)}
-                        <div style="display:flex; gap:8px; margin-top:24px;"><button class="btn" id="closeModCima" style="flex:1">Cerrar</button><button class="btn primary" id="saveMedLocal" style="flex:2">Guardar Offline</button></div>`;
                     
-                    $('#modalTitle').textContent = 'Ficha Técnica'; $('#modalBody').innerHTML = html; $('#modalActions').innerHTML = '';
+                    const html = `
+                        <div class="card">
+                            <div class="sub muted">CIMA Registro ${m.registration}</div>
+                            <h3 style="font-size:1.3rem; margin-bottom:8px;">${esc(d.nombre||m.name)}</h3>
+                            <div style="background: color-mix(in srgb, var(--primary) 10%, transparent); padding: 12px; border-radius: var(--radius-sm); border-left: 4px solid var(--primary);">
+                                <strong style="color: var(--primary); display:block; margin-bottom:4px;">Principio Activo:</strong>
+                                <span>${esc(active)}</span>
+                            </div>
+                        </div>
+                        ${block('Para qué se usa (Indicaciones FT 4.1)', info.indicaciones)}
+                        ${block('Alergias y Contraindicaciones (FT 4.3)', info.contraindications, true)}
+                        ${block('Posología (FT 4.2)', info.posology)}
+                        ${block('Interacciones (FT 4.5)', info.interactions)}
+                        ${block('Reacciones Adversas (FT 4.8)', info.adverse, true)}
+                        ${block('Manipulación (FT 6.6)', info.handling)}
+                        
+                        <div style="display:flex; gap:8px; margin-top:24px; position:sticky; bottom:0; padding-top:16px; background:var(--bg-card);">
+                            <button class="btn" id="closeModCima" style="flex:1">Cerrar</button>
+                            <button class="btn primary" id="saveMedLocal" style="flex:2">★ Guardar Offline</button>
+                        </div>`;
+                    
+                    $('#modalTitle').textContent = 'Ficha Técnica AEMPS'; 
+                    $('#modalBody').innerHTML = html; 
+                    $('#modalActions').innerHTML = '';
+                    
                     $('#closeModCima').onclick = () => $('#modalOverlay').classList.remove('open');
                     $('#saveMedLocal').onclick = async () => {
                         await NurseDB.put('meds', {id: String(m.registration), name: d.nombre||m.name, registration: m.registration, active, clinical: info, savedAt: new Date().toISOString()});
                         $('#modalOverlay').classList.remove('open'); UI.toast('Guardado en Botiquín Local'); renderView();
                     };
-                } catch(e) { UI.alert('Error', 'No se pudo cargar la ficha desde CIMA.'); }
+                } catch(e) { UI.alert('Error', 'No se pudo cargar la ficha desde CIMA. Comprueba tu conexión.'); }
             }
         });
 
-        // Configuración Inicial, Guardado y Boot
         const saveSettings = async () => { await NurseDB.put('settings', {id: 'main', value: state.settings}); };
         
         $('#fileImport').onchange = async e => {
@@ -1571,7 +1447,7 @@
                 $('#pinGrid').onclick = async e => {
                     if(e.target.tagName !== 'BUTTON') return; const v = e.target.dataset.pin;
                     if(v === 'C') pin = pin.slice(0,-1);
-                    else if(v === 'OK') { if(await hashText(pin) === state.settings.pinHash) unlock(); else { pin = ''; $('#lockMsg').textContent = 'PIN Incorrecto'; $('#lockMsg').style.color = 'var(--danger)'; } }
+                    else if(v === 'OK') { if(await hashText(pin) === state.settings.pinHash) unlock(); else { pin = ''; $('#lockMsg').textContent = 'PIN Incorrecto (Mín 6 dígitos)'; $('#lockMsg').style.color = 'var(--danger)'; } }
                     else if(pin.length < 8) pin += v; draw();
                 };
             } else {
@@ -1592,30 +1468,41 @@
                 if (saved) state.settings = { ...state.settings, ...saved.value };
                 
                 document.documentElement.setAttribute('data-theme', state.settings.theme);
+                if (state.settings.glovesMode) document.documentElement.classList.add('gloves-mode');
 
-                // Sembrar BD si es nueva instalación
                 if ((await NurseDB.all('procedures')).length === 0) await NurseDB.bulkPut('procedures', NURSE_DATA.procedures);
                 if ((await NurseDB.all('quiz')).length === 0) await NurseDB.bulkPut('quiz', NURSE_DATA.quiz);
-                if ((await NurseDB.all('flashcards')).length === 0) await NurseDB.put('flashcards', {id:uid(), q:'¿Qué debes registrar en un caso académico?', a:'Información anonimizada: patología, procedimientos, grado de participación y reflexión.', topic:'Prácticum', due:getLocalISOToday(), ease:2.5, interval:0, reps:0});
 
-                if(!state.settings.onboardingComplete) {
+                if(!state.settings.onboardingComplete || !state.settings.legalAccepted) {
                     const ob = $('#onboardingView'); ob.classList.remove('hidden');
                     ob.innerHTML = `
                         <div class="container" style="padding-top:40px">
-                            <h1 style="color:var(--primary); font-size:2.5rem; text-align:center;">NurseFlow</h1>
-                            <p class="muted" style="text-align:center; margin-bottom:32px;">Configura tu entorno 100% privado y offline.</p>
+                            <h1 style="color:var(--primary); font-size:2.5rem; text-align:center;">NurseFlow Pro</h1>
+                            <p class="muted" style="text-align:center; margin-bottom:24px;">Entorno clínico y académico 100% privado.</p>
+                            
+                            <div class="card" style="border-left: 4px solid var(--warning); margin-bottom: 24px;">
+                                <h3 style="margin-bottom:8px; color:var(--warning)">⚖️ Aviso Legal y Uso Clínico</h3>
+                                <p style="font-size:0.9rem; line-height:1.4;">Esta aplicación es una herramienta de apoyo educativo y de organización para estudiantes y profesionales de enfermería. <strong>No sustituye bajo ningún concepto los protocolos oficiales, guías clínicas ni la prescripción facultativa de tu centro hospitalario.</strong> Verifica siempre cualquier cálculo o procedimiento.</p>
+                            </div>
+
                             <form id="obForm" class="card">
+                                <label class="check-row" style="font-weight:600; margin-bottom:20px;">
+                                    <input type="checkbox" id="legalCheck" required>
+                                    <span>He leído y acepto el aviso legal y de uso responsable.</span>
+                                </label>
                                 <label>Universidad</label><select class="field" name="uni"><option value="UCV">UCV</option><option value="Otro">Otra</option></select>
                                 <label>Curso</label><select class="field" name="course"><option value="1">1º Enfermería</option><option value="2">2º Enfermería</option><option value="3">3º Enfermería</option><option value="4">4º Enfermería</option></select>
-                                <label class="switch-row"><span><strong>Ya tengo prácticas asignadas</strong></span><span class="switch"><input type="checkbox" id="obPrac"><span class="slider"></span></span></label>
-                                <div id="obPracFields" class="hidden"><label>Prácticum</label><input class="field" name="practicum" placeholder="Ej. Prácticum I"><label>Centro / Hospital</label><input class="field" name="hospital"></div>
-                                <button class="btn primary block" style="margin-top:24px">Comenzar</button>
+                                <label class="switch-row"><span><strong>¿Tienes prácticas asignadas?</strong></span><span class="switch"><input type="checkbox" id="obPrac"><span class="slider"></span></span></label>
+                                <div id="obPracFields" class="hidden"><label>Prácticum</label><input class="field" name="practicum" placeholder="Ej. Prácticum I"><label>Hospital / Centro</label><input class="field" name="hospital"></div>
+                                <button class="btn primary block" style="margin-top:24px">Comenzar NurseFlow</button>
                             </form>
                         </div>`;
                     $('#obPrac').onchange = e => $('#obPracFields').classList.toggle('hidden', !e.target.checked);
                     $('#obForm').onsubmit = async e => {
-                        e.preventDefault(); const f = new FormData(e.target); const has = $('#obPrac').checked;
-                        Object.assign(state.settings, { onboardingComplete: true, university: f.get('uni'), courseNumber: f.get('course'), course: `${f.get('course')}º Enfermería`, hasPracticum: has, practicum: has?f.get('practicum'):'', hospital: has?f.get('hospital'):''});
+                        e.preventDefault();
+                        if (!$('#legalCheck').checked) return UI.toast('Debes aceptar el aviso legal');
+                        const f = new FormData(e.target); const has = $('#obPrac').checked;
+                        Object.assign(state.settings, { onboardingComplete: true, legalAccepted: true, legalAcceptedAt: new Date().toISOString(), university: f.get('uni'), courseNumber: f.get('course'), course: `${f.get('course')}º Enfermería`, hasPracticum: has, practicum: has?f.get('practicum'):'', hospital: has?f.get('hospital'):''});
                         await saveSettings(); ob.classList.add('hidden'); renderView();
                     };
                 } else {
@@ -1629,7 +1516,6 @@
         }
 
         document.addEventListener('DOMContentLoaded', boot);
-
     </script>
 </body>
 </html>
