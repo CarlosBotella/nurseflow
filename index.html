@@ -1750,10 +1750,9 @@
             return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
         }
 
-        function attachICDAutocomplete(input, codeInput, validatedInput, statusBox, resultsBox) {
+        function attachICDAutocomplete(input, codeInput, validatedInput, statusBox, resultsBox, contextInput = null) {
             let timer = null;
             
-            // Función auxiliar para limpiar el HTML que devuelve la OMS cuando lo pasamos al input
             const stripHtml = (html) => {
                 const tmp = document.createElement('DIV');
                 tmp.innerHTML = html;
@@ -1776,11 +1775,7 @@
                 
                 timer = setTimeout(async () => {
                     try {
-                        // Cambia esto por la URL de tu Cloudflare Worker
                         const workerUrl = `https://nurseflow-api.carlosb-n.workers.dev/icd/search?q=${encodeURIComponent(q)}&includeKeywordMatches=true`;
-                        
-                        // Si usas la validación por secreto, añade la cabecera aquí:
-                        // 'X-Admin-Secret': 'TU_SECRETO' (solo para pruebas en local, NO en producción)
                         const r = await fetch(workerUrl, { headers: { 'Accept-Language': 'es' } });
                         if (!r.ok) throw new Error('Error en la petición');
                         
@@ -1797,18 +1792,17 @@
                         let html = '';
                         items.slice(0, 10).forEach(item => {
                             const code = item.theCode || 'S/C';
-                            // La OMS devuelve el título con <em> para resaltar la coincidencia. Lo mantenemos para el menú.
                             const richTitle = item.title || 'Diagnóstico sin título';
                             const cleanTitle = stripHtml(richTitle); 
                             
-                            // Extraemos contexto clínico: Si coincidió por un sinónimo (ej. "Neumonía atípica")
-                            // lo mostramos para que el alumno entienda la relación.
+                            // Extraemos el ID numérico de la entidad de la URL completa que devuelve la OMS
+                            const entityId = item.id.split('/').pop();
+                            
                             let clinicalContext = '';
                             if (item.matchingPVs && item.matchingPVs.length > 0) {
                                 const synonymMatch = item.matchingPVs.find(pv => pv.propertyId === 'Synonym' || pv.propertyId === 'TitleOfOtherEntity');
                                 if (synonymMatch) {
                                     const cleanSynonym = stripHtml(synonymMatch.label);
-                                    // Solo lo mostramos si el sinónimo es diferente al título principal
                                     if (cleanSynonym.toLowerCase() !== cleanTitle.toLowerCase()) {
                                         clinicalContext = `<div class="sub" style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">↳ Incluye: <i>${synonymMatch.label}</i></div>`;
                                     }
@@ -1816,7 +1810,7 @@
                             }
 
                             html += `
-                                <button type="button" class="list-row clickable" data-icdcode="${esc(code)}" data-icdtitle="${esc(cleanTitle)}" style="text-align:left; padding: 10px; height: auto; min-height: 54px; align-items: flex-start;">
+                                <button type="button" class="list-row clickable" data-icdcode="${esc(code)}" data-icdtitle="${esc(cleanTitle)}" data-entityid="${esc(entityId)}" style="text-align:left; padding: 10px; height: auto; min-height: 54px; align-items: flex-start;">
                                     <span class="pill primary" style="min-width:65px; text-align:center; font-weight:bold; font-size:0.8rem; margin-top:2px;">${esc(code)}</span>
                                     <div class="grow" style="margin-left:12px; line-height:1.3; min-width:0;">
                                         <strong style="font-size:0.9rem; display:block; white-space:normal; word-wrap:break-word;">${richTitle}</strong>
@@ -1830,7 +1824,6 @@
                         resultsBox.style.display = 'block';
                         statusBox.innerHTML = '<span class="muted">Selecciona el diagnóstico clínico más preciso:</span>';
                         
-                        // Añadimos color de resaltado a las etiquetas <em> que devuelve la OMS
                         resultsBox.querySelectorAll('em.found').forEach(em => {
                             em.style.fontStyle = 'normal';
                             em.style.backgroundColor = 'color-mix(in srgb, var(--primary) 20%, transparent)';
@@ -1839,14 +1832,47 @@
                             em.style.borderRadius = '2px';
                         });
 
-                        // Evento al hacer clic en un resultado
+                        // EVENTO CLIC EN RESULTADO DE LA OMS
                         resultsBox.querySelectorAll('[data-icdcode]').forEach(b => {
-                            b.onclick = () => {
-                                input.value = b.dataset.icdtitle;
+                            b.onclick = async () => {
+                                const title = b.dataset.icdtitle;
+                                const entityId = b.dataset.entityid;
+                                
+                                input.value = title;
                                 codeInput.value = b.dataset.icdcode;
                                 validatedInput.value = 'true';
                                 statusBox.innerHTML = '<span style="color:var(--success)">✓ Código validado: <strong>' + esc(b.dataset.icdcode) + '</strong></span>';
                                 resultsBox.style.display = 'none';
+
+                                // DESCARGA DE LA DEFINICIÓN OFICIAL DE LA API
+                                if (contextInput && contextInput.value.trim() === '') {
+                                    contextInput.value = "Descargando definición de la OMS...";
+                                    contextInput.disabled = true; // Bloqueamos mientras carga
+                                    
+                                    try {
+                                        const entityUrl = `https://nurseflow-api.carlosb-n.workers.dev/icd/entity/${entityId}`;
+                                        const res = await fetch(entityUrl, { headers: { 'Accept-Language': 'es' } });
+                                        const entityData = await res.json();
+                                        
+                                        const definition = entityData.definition?.['@value'];
+                                        
+                                        if (definition) {
+                                            contextInput.value = `OMS: "${definition}"\n\nPaciente ingresa por este motivo. Constantes al ingreso:\n- TA: \n- FC: \n- SatO2: \n- Tª: \n\nPortador de VVP en [EESS].`;
+                                        } else {
+                                            // Si la OMS no tiene definición escrita para esa enfermedad exacta
+                                            contextInput.value = `Paciente ingresa por cuadro de ${title}.\n\nConstantes al ingreso:\n- TA: \n- FC: \n- SatO2: \n- Tª: \n\nPortador de VVP en [EESS].`;
+                                        }
+                                    } catch (err) {
+                                        // Si falla la red en ese milisegundo
+                                        contextInput.value = `Paciente ingresa por cuadro de ${title}.\n\nConstantes: `;
+                                    } finally {
+                                        contextInput.disabled = false;
+                                        // Feedback visual
+                                        contextInput.style.transition = 'background-color 0.4s';
+                                        contextInput.style.backgroundColor = 'color-mix(in srgb, var(--primary) 15%, transparent)';
+                                        setTimeout(() => contextInput.style.backgroundColor = 'var(--bg-hover)', 600);
+                                    }
+                                }
                             };
                         });
                         
