@@ -1305,6 +1305,7 @@
             if (!sections) return result;
             sections.forEach(s => {
                 result.push(s);
+                // CIMA a veces anida subsecciones dentro de una sección padre
                 if (s.secciones && s.secciones.length > 0) flattenCIMASections(s.secciones, result);
             });
             return result;
@@ -1312,8 +1313,10 @@
 
         function extractCIMASection(sections, prefix) {
             const flat = flattenCIMASections(sections);
+            // El manual especifica que el campo se llama 'seccion' y contiene números como "4.1"
             const row = flat.find(s => String(s.seccion||'').startsWith(prefix));
             if(!row) return '';
+            // El contenido viene en HTML según la documentación
             const doc = new DOMParser().parseFromString(row.contenido, 'text/html');
             doc.querySelectorAll('script,style,table').forEach(x=>x.remove()); // Quitamos tablas complejas para vista móvil
             return (doc.body.textContent||'').replace(/\s+/g,' ').trim();
@@ -1381,17 +1384,17 @@
                     
                     const active = (d.principiosActivos||[]).map(p=>`${p.nombre} ${p.cantidad||''} ${p.unidad||''}`).join(', ') || m.active || 'No especificado';
                     
-                    // Extraemos las secciones usando la nueva función recursiva
+                    // Extraemos las secciones usando los códigos oficiales de la Ficha Técnica
                     const info = { 
-                        indicaciones: extractCIMASection(s, '4.1'), // QUÉ ES Y PARA QUÉ SE USA
-                        posology: extractCIMASection(s,'4.2'), 
-                        incompatibilities: extractCIMASection(s,'6.2'), 
-                        handling: extractCIMASection(s,'6.6'), 
-                        contraindications: extractCIMASection(s,'4.3'), // ALERGIAS Y CONTRAINDICACIONES
-                        warnings: extractCIMASection(s,'4.4'), 
-                        interactions: extractCIMASection(s,'4.5'), 
-                        adverse: extractCIMASection(s,'4.8'), 
-                        storage: extractCIMASection(s,'6.4') 
+                        indicaciones: extractCIMASection(s, '4.1'), // 4.1 Indicaciones terapéuticas
+                        posology: extractCIMASection(s,'4.2'), // 4.2 Posología y forma de administración
+                        incompatibilities: extractCIMASection(s,'6.2'), // 6.2 Incompatibilidades
+                        handling: extractCIMASection(s,'6.6'), // 6.6 Precauciones especiales de eliminación
+                        contraindications: extractCIMASection(s,'4.3'), // 4.3 Contraindicaciones
+                        warnings: extractCIMASection(s,'4.4'), // 4.4 Advertencias y precauciones especiales de empleo
+                        interactions: extractCIMASection(s,'4.5'), // 4.5 Interacción con otros medicamentos
+                        adverse: extractCIMASection(s,'4.8'), // 4.8 Reacciones adversas
+                        storage: extractCIMASection(s,'6.4') // 6.4 Precauciones especiales de conservación
                     };
                     
                     const block = (title, text, danger=false) => text ? `<div class="clinical-section ${danger?'critical':''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
