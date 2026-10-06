@@ -856,119 +856,187 @@
                     const options = subjects.map(s => `<option value="${esc(s[1])}" ${row?.title===s[1]?'selected':''}>${esc(s[1])}</option>`).join('');
                     const isCustom = row && !subjects.some(s => s[1] === row.title);
                     html = `
-                        <form id="classForm">
+                        <form id="classForm" class="card">
                             <label>Asignatura / Actividad</label>
                             <select class="field" id="subjectSelect"><option value="">Selecciona...</option>${options}<option value="__custom" ${isCustom?'selected':''}>Otra actividad...</option></select>
-                            <input class="field ${isCustom?'':'hidden'}" id="customSubject" placeholder="Nombre" value="${isCustom?esc(row.title):''}" style="margin-top:8px">
-                            <div class="form-row">
+                            <input class="field ${isCustom?'':'hidden'}" id="customSubject" placeholder="Nombre de la actividad" value="${isCustom?esc(row.title):''}" style="margin-top:8px">
+                            
+                            <div class="form-row" style="margin-top:16px;">
                                 <div><label>Día</label><select class="field" name="day">${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map((x,i)=>`<option value="${i}" ${row?.day==i?'selected':''}>${x}</option>`).join('')}</select></div>
-                                <div><label>Aula</label><input class="field" name="room" value="${esc(row?.room||'')}"></div>
+                                <div><label>Aula</label><input class="field" name="room" placeholder="Ej. B-04" value="${esc(row?.room||'')}"></div>
                             </div>
                             <div class="form-row">
-                                <div><label>Inicio</label><input class="field" type="time" name="start" required value="${esc(row?.start||'09:00')}"></div>
-                                <div><label>Fin</label><input class="field" type="time" name="end" required value="${esc(row?.end||'11:00')}"></div>
+                                <div><label>Hora Inicio</label><input class="field" type="time" name="start" required value="${esc(row?.start||'09:00')}"></div>
+                                <div><label>Hora Fin</label><input class="field" type="time" name="end" required value="${esc(row?.end||'11:00')}"></div>
                             </div>
+                            
                             <div style="display:flex; gap:8px; margin-top:24px;">
                                 ${row ? `<button type="button" class="btn danger" style="flex:1" data-action="deleteClass" data-id="${row.id}">Borrar</button>` : ''}
-                                <button class="btn primary" style="flex:2">Guardar</button>
+                                <button class="btn primary" style="flex:2">Guardar Clase</button>
                             </div>
                         </form>`;
                 }
                 else if (view === 'exceptions') {
                     const rows = (await NurseDB.all('exceptions')).sort((a,b)=>a.date.localeCompare(b.date));
                     html = `
-                        ${UIHelpers.notice('Fechas especiales como festivos o exámenes.', true)}
+                        ${UIHelpers.notice('Registra festivos, semanas de exámenes o días sin clase.', true)}
                         <form id="exceptionForm" class="card">
-                            <div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="date" required></div><div><label>Tipo</label><select class="field" name="type"><option>Festivo</option><option>Examen</option><option>Otro</option></select></div></div>
-                            <label>Descripción</label><input class="field" name="title" required placeholder="Ej. Fiesta local">
-                            <button class="btn primary block">Añadir Excepción</button>
+                            <div class="form-row">
+                                <div><label>Fecha</label><input class="field" type="date" name="date" required></div>
+                                <div><label>Tipo</label><select class="field" name="type"><option>Festivo</option><option>Examen</option><option>Otro</option></select></div>
+                            </div>
+                            <label>Descripción</label>
+                            <input class="field" name="title" required placeholder="Ej. Fiesta local o Examen Farma">
+                            <button class="btn primary block">Añadir Fecha</button>
                         </form>
-                        <div class="list" id="exceptionList">${rows.map(x=>UIHelpers.listRow({title: `${dateFmt(x.date)} · ${x.title}`, sub: x.type, icon: '!', action: `data-action="deleteEx" data-id="${x.id}"`})).join('') || UIHelpers.noData('Sin excepciones')}</div>`;
+                        <h4 style="margin: 24px 0 8px;">Próximas excepciones</h4>
+                        <div class="list" id="exceptionList">${rows.map(x=>UIHelpers.listRow({title: `${dateFmt(x.date)} · ${x.title}`, sub: x.type, icon: '!', action: `data-action="deleteEx" data-id="${x.id}"`})).join('') || UIHelpers.noData('Calendario despejado', 'No hay excepciones registradas.')}</div>`;
                 }
                 else if (view === 'tasks') {
                     const rows = (await NurseDB.all('tasks')).sort((a,b)=>(a.done-b.done) || ((a.due||'9999').localeCompare(b.due||'9999')));
                     html = `
                         <form id="taskForm" class="card">
-                            <label>Nuevo pendiente</label><input class="field" name="title" required placeholder="Ej. Entregar trabajo">
-                            <div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="due"></div><div><label>Categoría</label><select class="field" name="category"><option>Universidad</option><option>Prácticum</option><option>Personal</option></select></div></div>
+                            <label>Nueva Tarea</label>
+                            <input class="field" name="title" required placeholder="Ej. Entregar trabajo de anatomía">
+                            <div class="form-row">
+                                <div><label>Fecha límite</label><input class="field" type="date" name="due"></div>
+                                <div><label>Categoría</label><select class="field" name="category"><option>Universidad</option><option>Prácticum</option><option>Personal</option></select></div>
+                            </div>
                             <button class="btn primary block">Añadir Tarea</button>
                         </form>
-                        <div class="list">${rows.map(x=>`<div class="list-row"><label class="check-row" style="margin:0; flex:1;"><input type="checkbox" data-task="${x.id}" ${x.done?'checked':''}><span><strong>${esc(x.title)}</strong><div class="sub">${x.due?dateFmt(x.due):'Sin fecha'} · ${esc(x.category)}</div></span></label><button class="btn icon-only" data-action="deleteTask" data-id="${x.id}">×</button></div>`).join('') || UIHelpers.noData('Nada pendiente')}</div>`;
+                        <h4 style="margin: 24px 0 8px;">Lista de tareas</h4>
+                        <div class="list">${rows.map(x=>`<div class="list-row"><label class="check-row" style="margin:0; flex:1;"><input type="checkbox" data-task="${x.id}" ${x.done?'checked':''}><span><strong style="text-decoration: ${x.done?'line-through':'none'}; opacity: ${x.done?'0.6':'1'}">${esc(x.title)}</strong><div class="sub">${x.due?dateFmt(x.due):'Sin fecha'} · ${esc(x.category)}</div></span></label><button class="btn icon-only" data-action="deleteTask" data-id="${x.id}">×</button></div>`).join('') || UIHelpers.noData('Nada pendiente', 'Estás al día.')}</div>`;
                 }
                 else if (view === 'caseForm') {
                     const row = data ? await NurseDB.get('cases', data) : null;
                     const procs = await NurseDB.all('procedures');
                     html = `
-                        ${UIHelpers.notice('Registro académico anonimizado. No introduzcas SIP, cama o nombres de pacientes.')}
-                        <form id="caseForm">
-                            <div class="form-row"><div><label>Fecha</label><input class="field" type="date" name="date" value="${row?.date || getLocalISOToday()}" required></div><div><label>Área / Servicio</label><input class="field" name="area" value="${esc(row?.area || state.settings.service || 'Planta')}"></div></div>
+                        ${UIHelpers.notice('Registro académico anonimizado. Nunca introduzcas SIP, cama, ni nombres reales de pacientes.', false, true)}
+                        <form id="caseForm" class="card">
+                            <h3 style="margin-bottom:16px;">Datos del Turno</h3>
+                            <div class="form-row">
+                                <div><label>Fecha</label><input class="field" type="date" name="date" value="${row?.date || getLocalISOToday()}" required></div>
+                                <div><label>Área / Servicio</label><input class="field" name="area" value="${esc(row?.area || state.settings.service || 'Planta')}"></div>
+                            </div>
                             
-                            <label>Diagnóstico (Autocompletado CIE-11)</label>
-                            <input class="field" name="diagnosis" id="caseDiagnosis" value="${esc(row?.diagnosis||'')}" placeholder="Ej. Neumonía" autocomplete="off" required>
+                            <hr style="border:0; border-top:1px solid var(--border-color); margin: 24px 0;">
+                            
+                            <h3 style="margin-bottom:16px;">Motivo Clínico</h3>
+                            <label>Diagnóstico Principal (CIE-11)</label>
+                            <input class="field" name="diagnosis" id="caseDiagnosis" value="${esc(row?.diagnosis||'')}" placeholder="Escribe para buscar (ej. Neumonía)" autocomplete="off" required>
                             <input type="hidden" name="icdCode" id="caseIcdCode" value="${esc(row?.icdCode||'')}">
                             <input type="hidden" name="icdValidated" id="caseIcdValidated" value="${row?.icdValidated ? 'true' : 'false'}">
-                            <div id="icdStatus" style="font-size:0.8rem; margin-top:-8px; margin-bottom:12px;">${row?.icdValidated ? '<span style="color:var(--success)">✓ Código verificado OMS</span>' : '<span class="muted">Código no verificado</span>'}</div>
-                            <div id="icdAutocomplete" class="list" style="display:none; margin-bottom:16px;"></div>
                             
-                            <label>Contexto Clínico</label><textarea class="field" name="context" placeholder="Solo lo necesario para aprender...">${esc(row?.context||'')}</textarea>
+                            <div id="icdStatus" style="font-size:0.8rem; margin-top:-8px; margin-bottom:12px;">
+                                ${row?.icdValidated ? '<span style="color:var(--success)">✓ Código validado con la OMS</span>' : '<span class="muted">No validado</span>'}
+                            </div>
+                            <div id="icdAutocomplete" class="list" style="display:none; margin-bottom:16px; background:var(--bg-hover); padding:8px; border-radius:var(--radius-md);"></div>
                             
-                            <label>Procedimientos</label>
+                            <label>Contexto del paciente (Breve)</label>
+                            <textarea class="field" name="context" placeholder="Ej. Varón 65a. Acude por disnea progresiva de 3 días de evolución..." style="min-height:80px;">${esc(row?.context||'')}</textarea>
+                            
+                            <hr style="border:0; border-top:1px solid var(--border-color); margin: 24px 0;">
+                            
+                            <h3 style="margin-bottom:16px;">Intervenciones de Enfermería</h3>
+                            <label>Procedimientos y Técnicas</label>
                             <div id="caseProcsList" style="margin-bottom:8px">
                                 ${(row?.procedures||[]).map(p => `
                                     <div class="form-row" data-proc-row style="margin-bottom:8px">
                                         <select class="field" name="procId" style="margin-bottom:0"><option value="${p.id}">${esc(p.name)}</option></select>
-                                        <select class="field" name="participation" style="margin-bottom:0"><option ${p.participation==='Realizado por mí'?'selected':''}>Realizado por mí</option><option ${p.participation==='Observado'?'selected':''}>Observado</option><option ${p.participation==='Ayudado'?'selected':''}>Ayudado</option></select>
+                                        <select class="field" name="participation" style="margin-bottom:0">
+                                            <option ${p.participation==='Realizado por mí'?'selected':''}>Realizado por mí</option>
+                                            <option ${p.participation==='Observado'?'selected':''}>Observado</option>
+                                            <option ${p.participation==='Ayudado'?'selected':''}>Ayudado</option>
+                                        </select>
                                     </div>
                                 `).join('')}
                             </div>
                             <div class="form-row" data-proc-row id="newProcTemplate" style="margin-bottom:16px">
-                                <select class="field" name="procId"><option value="">Añadir técnica...</option>${procs.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
-                                <select class="field" name="participation"><option>Realizado por mí</option><option>Observado</option><option>Ayudado</option></select>
+                                <select class="field" name="procId"><option value="">+ Añadir técnica...</option>${procs.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
+                                <select class="field" name="participation">
+                                    <option>Realizado por mí</option>
+                                    <option>Observado</option>
+                                    <option>Ayudado</option>
+                                </select>
                             </div>
 
-                            <label>Meds relacionados</label><input class="field" name="meds" value="${esc((row?.meds||[]).join(', '))}" placeholder="Ej. Paracetamol, Furosemida">
-                            <label>Reflexión</label><textarea class="field" name="learning">${esc(row?.learning||'')}</textarea>
-                            <label>Dudas para revisar</label><textarea class="field" name="review">${esc(row?.review||'')}</textarea>
-                            <label class="check-row"><input type="checkbox" name="starred" ${row?.starred?'checked':''}><span>Destacar para Memoria Final</span></label>
+                            <label>Medicamentos Clave</label>
+                            <input class="field" name="meds" value="${esc((row?.meds||[]).join(', '))}" placeholder="Ej. Furosemida, Enoxaparina, Paracetamol">
+                            
+                            <hr style="border:0; border-top:1px solid var(--border-color); margin: 24px 0;">
+                            
+                            <h3 style="margin-bottom:16px;">Reflexión de Prácticas</h3>
+                            <label>Aprendizaje del caso</label>
+                            <textarea class="field" name="learning" placeholder="¿Qué has aprendido de este paciente?">${esc(row?.learning||'')}</textarea>
+                            
+                            <label>Dudas para revisar en casa</label>
+                            <textarea class="field" name="review" placeholder="Ej. Repasar mecanismo de acción de la digoxina">${esc(row?.review||'')}</textarea>
+                            
+                            <div class="card" style="background:var(--warning-bg); border-color:var(--warning); padding:12px; margin-bottom:24px;">
+                                <label class="check-row" style="margin:0;">
+                                    <input type="checkbox" name="starred" ${row?.starred?'checked':''}>
+                                    <span style="color:var(--warning); font-weight:bold;">Destacar para la Memoria Final</span>
+                                </label>
+                            </div>
 
-                            <div style="display:flex; gap:8px; margin-top:24px;">
+                            <div style="display:flex; gap:8px;">
                                 ${row && !state.readOnlyMode ? `<button type="button" class="btn danger" style="flex:1" data-action="deleteCase" data-id="${row.id}">Borrar</button>` : ''}
-                                ${!state.readOnlyMode ? `<button class="btn primary" style="flex:2">Guardar Caso</button>` : '<p class="muted">Modo solo lectura activado.</p>'}
+                                ${!state.readOnlyMode ? `<button class="btn primary" style="flex:2">Guardar Caso Clínico</button>` : '<p class="muted" style="width:100%; text-align:center;">Modo solo lectura activado.</p>'}
                             </div>
                         </form>`;
                 }
                 else if (view === 'caseDetail') {
                     const c = await NurseDB.get('cases', data); if(!c) return;
                     html = `
-                        <div class="card"><div class="sub muted">${dateFmt(c.date)} ${c.area ? '· '+esc(c.area) : ''} ${c.icdCode ? '· CIE-11 '+esc(c.icdCode) : ''} ${c.icdValidated ? '· <span style="color:var(--success)">✓ Verificado</span>' : ''}</div><h3 style="font-size:1.3rem; margin-top:4px;">${esc(c.diagnosis)}</h3>${c.starred ? '<span class="pill warning" style="margin-top:8px">★ Destacado</span>' : ''}</div>
-                        ${c.context ? `<h4>Contexto</h4><p class="card">${esc(c.context)}</p>` : ''}
-                        <h4>Procedimientos</h4><div class="list" style="margin-bottom:16px">${(c.procedures||[]).map(p=>UIHelpers.listRow({title:p.name, sub:p.participation, icon:'▤'})).join('') || UIHelpers.noData('Ninguno')}</div>
-                        ${c.meds?.length ? `<h4>Medicamentos</h4><div class="tag-cloud">${c.meds.map(m=>`<span class="tag">${esc(m)}</span>`).join('')}</div>` : ''}
-                        ${c.learning ? `<h4>Aprendizaje</h4><p class="card">${esc(c.learning)}</p>` : ''}
-                        ${c.review ? `<h4>Dudas</h4><p class="card">${esc(c.review)}</p>` : ''}
-                        ${!state.readOnlyMode ? `<button class="btn primary block" data-action="openSlide" data-view="caseForm" data-id="${c.id}">Editar Caso</button>` : ''}`;
+                        <div class="card" style="border-left: 4px solid var(--primary);">
+                            <div class="sub muted" style="margin-bottom:4px;">
+                                📅 ${dateFmt(c.date)} &nbsp;•&nbsp; 🏥 ${c.area ? esc(c.area) : 'Planta'}
+                            </div>
+                            <h2 style="font-size:1.4rem; line-height:1.2; margin-bottom:8px;">${esc(c.diagnosis)}</h2>
+                            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                                ${c.icdCode ? `<span class="pill" style="background:var(--bg-hover); border:1px solid var(--border-color);">CIE-11: ${esc(c.icdCode)}</span>` : ''}
+                                ${c.icdValidated ? '<span class="pill" style="background:var(--success); color:white;">✓ Validado OMS</span>' : ''}
+                                ${c.starred ? '<span class="pill" style="background:var(--warning); color:white;">★ Memoria</span>' : ''}
+                            </div>
+                        </div>
+                        
+                        ${c.context ? `<h4>Historia y Contexto</h4><div class="card"><p style="white-space:pre-wrap;">${esc(c.context)}</p></div>` : ''}
+                        
+                        <h4>Procedimientos Realizados</h4>
+                        <div class="list" style="margin-bottom:24px;">
+                            ${(c.procedures||[]).map(p=>UIHelpers.listRow({title:p.name, sub:`Nivel de participación: ${p.participation}`, icon:'▤'})).join('') || UIHelpers.noData('Ningún procedimiento', 'Solo observación clínica.')}
+                        </div>
+                        
+                        ${c.meds?.length ? `<h4>Farmacología Asociada</h4><div class="card tag-cloud" style="margin-bottom:24px;">${c.meds.map(m=>`<span class="tag" style="background:color-mix(in srgb, var(--primary) 10%, transparent); color:var(--primary); border-color:var(--primary);">${esc(m)}</span>`).join('')}</div>` : ''}
+                        
+                        ${(c.learning || c.review) ? '<h4>Reflexión y Dudas</h4>' : ''}
+                        ${c.learning ? `<div class="card" style="border-left: 3px solid var(--success);"><p class="muted small" style="margin-bottom:4px;">APRENDIZAJE</p><p style="white-space:pre-wrap;">${esc(c.learning)}</p></div>` : ''}
+                        ${c.review ? `<div class="card" style="border-left: 3px solid var(--danger);"><p class="muted small" style="margin-bottom:4px;">PENDIENTE REVISAR</p><p style="white-space:pre-wrap;">${esc(c.review)}</p></div>` : ''}
+                        
+                        ${!state.readOnlyMode ? `<div style="margin-top:32px;"><button class="btn primary block" data-action="openSlide" data-view="caseForm" data-id="${c.id}">Editar Caso Clínico</button></div>` : ''}`;
                 }
                 else if (view === 'procDetail') {
                     const p = await NurseDB.get('procedures', data); 
                     if(!p) return;
                     
                     html = `
-                        <div class="card">
-                            <div class="sub muted">Guía de Técnica</div>
-                            <h3 style="font-size:1.3rem; margin-top:4px; margin-bottom:8px;">${esc(p.name)}</h3>${p.favorite ? '<span class="pill warning">★ Favorito</span>' : ''}
+                        <div class="card hero">
+                            <div class="muted small">Guía de Técnica Enfermera</div>
+                            <h2 style="font-size:1.4rem; line-height:1.2; margin-top:4px; margin-bottom:12px;">${esc(p.name)}</h2>
+                            ${p.favorite ? '<span class="pill" style="background:rgba(255,255,255,0.2); color:white;">★ Técnica Frecuente</span>' : ''}
                         </div>
                         
-                        <h4>Material Necesario</h4>
+                        <h4 style="margin-bottom:8px;">Bandeja / Material Necesario</h4>
                         <div class="card">
-                            <ul style="padding-left: 20px; color: var(--text-main);">
-                                ${(p.materials||[]).map(m => `<li style="margin-bottom: 8px;">${esc(m)}</li>`).join('')}
+                            <ul style="padding-left: 0; list-style:none; color: var(--text-main);">
+                                ${(p.materials||[]).map(m => `<li style="margin-bottom: 8px; padding-bottom:8px; border-bottom:1px solid var(--border-color); display:flex; align-items:flex-start;"><span style="color:var(--primary); margin-right:8px;">▫</span> ${esc(m)}</li>`).join('')}
                             </ul>
                         </div>
                         
-                        <h4>Consideraciones y Técnica</h4>
-                        <div class="card" style="border-left: 4px solid var(--primary);">
+                        <h4 style="margin-top:24px; margin-bottom:8px;">Consideraciones Clínicas (Evidencia)</h4>
+                        <div class="card" style="background:color-mix(in srgb, var(--primary) 5%, transparent); border-left: 4px solid var(--primary);">
                             <ul style="padding-left: 20px; color: var(--text-main);">
-                                ${(p.notes||[]).map(n => `<li style="margin-bottom: 8px;">${esc(n)}</li>`).join('')}
+                                ${(p.notes||[]).map(n => `<li style="margin-bottom: 12px; line-height:1.4;">${esc(n)}</li>`).join('')}
                             </ul>
                         </div>
                         ${UIHelpers.clinicalWarning()}
@@ -977,12 +1045,30 @@
                 else if (view === 'dayLog') {
                     const date = getLocalISOToday(), row = await NurseDB.get('days', date);
                     html = `
-                        <form id="dayForm">
-                            <label>Fecha</label><input class="field" type="date" name="date" value="${date}" required readonly>
-                            <label class="check-row"><input type="checkbox" name="attendance" ${row?.attendanceOfficial?'checked':''}><span>He registrado asistencia oficial en la plataforma de la Universidad</span></label>
-                            <label>Estado del turno</label><select class="field" name="mood"><option ${row?.mood==='Tranquilo'?'selected':''}>Tranquilo</option><option ${row?.mood==='Intenso'?'selected':''}>Intenso</option><option ${row?.mood==='Muy productivo'?'selected':''}>Muy productivo</option></select>
-                            <label>Impresión general</label><textarea class="field" name="learning" placeholder="Resumen del turno...">${esc(row?.learning||'')}</textarea>
-                            ${!state.readOnlyMode ? '<button class="btn primary block">Guardar Día</button>' : ''}
+                        ${UIHelpers.notice('Registra tu asistencia y estado de ánimo general del turno.')}
+                        <form id="dayForm" class="card">
+                            <label>Fecha de la Guardia/Turno</label>
+                            <input class="field" type="date" name="date" value="${date}" required readonly style="background:var(--bg-hover);">
+                            
+                            <label>Estado del turno</label>
+                            <select class="field" name="mood">
+                                <option ${row?.mood==='Tranquilo'?'selected':''}>😊 Tranquilo y formativo</option>
+                                <option ${row?.mood==='Intenso'?'selected':''}>🔥 Intenso / Sobrecarga</option>
+                                <option ${row?.mood==='Muy productivo'?'selected':''}>🚀 Muy productivo (muchas técnicas)</option>
+                                <option ${row?.mood==='Duro emocionalmente'?'selected':''}>❤️ Duro emocionalmente (exitus, etc.)</option>
+                            </select>
+                            
+                            <label>Diario Reflexivo (Opcional)</label>
+                            <textarea class="field" name="learning" placeholder="¿Cómo te has sentido hoy con el equipo? ¿Qué tal el trato con los pacientes?" style="min-height:100px;">${esc(row?.learning||'')}</textarea>
+                            
+                            <div class="card" style="background:var(--bg-hover); padding:12px; margin-bottom:24px; box-shadow:none;">
+                                <label class="check-row" style="margin:0;">
+                                    <input type="checkbox" name="attendance" ${row?.attendanceOfficial?'checked':''}>
+                                    <span style="font-size:0.9rem;">He fichado la asistencia en la plataforma oficial de la Universidad.</span>
+                                </label>
+                            </div>
+                            
+                            ${!state.readOnlyMode ? '<button class="btn primary block">Guardar Registro Diario</button>' : '<p class="muted text-center">Modo lectura</p>'}
                         </form>`;
                 }
                 else if (view === 'portfolio' || view === 'tutoria') {
@@ -995,60 +1081,67 @@
                     }));
                     const rows = [...stats.values()].sort((a,b) => b.total - a.total);
                     html = `
-                        <div class="metric-row"><div class="metric"><b>${stats.size}</b><span>técnicas</span></div><div class="metric"><b>${rows.reduce((n,r)=>n+r.done,0)}</b><span>realizadas</span></div><div class="metric"><b>${rows.reduce((n,r)=>n+r.help,0)}</b><span>ayudadas</span></div><div class="metric"><b>${rows.reduce((n,r)=>n+r.obs,0)}</b><span>obs.</span></div></div>
-                        <div class="list" style="margin-top:16px">${rows.map(s => UIHelpers.listRow({title: s.name, sub: `Hecho: ${s.done} · Ayuda: ${s.help} · Obs: ${s.obs}`, icon: s.total, badge: s.done>2?'Dominado':'En progreso'})).join('') || UIHelpers.noData('Aún sin técnicas')}</div>`;
+                        <div class="metric-row">
+                            <div class="metric"><b>${stats.size}</b><span>Técnicas</span></div>
+                            <div class="metric"><b style="color:var(--success)">${rows.reduce((n,r)=>n+r.done,0)}</b><span>Mías</span></div>
+                            <div class="metric"><b style="color:var(--warning)">${rows.reduce((n,r)=>n+r.help,0)}</b><span>Ayuda</span></div>
+                            <div class="metric"><b style="color:var(--text-muted)">${rows.reduce((n,r)=>n+r.obs,0)}</b><span>Obs.</span></div>
+                        </div>
+                        <h4 style="margin: 24px 0 8px;">Competencias Clínicas</h4>
+                        <div class="list">${rows.map(s => UIHelpers.listRow({
+                            title: s.name, 
+                            sub: `Realizadas: ${s.done} · Ayudadas: ${s.help} · Observadas: ${s.obs}`, 
+                            icon: s.total, 
+                            badge: s.done>2 ? 'Dominado' : 'En progreso'
+                        })).join('') || UIHelpers.noData('Aún sin técnicas', 'Registra casos clínicos para ver aquí tu progreso de habilidades.')}</div>`;
                 }
                 else if (view === 'memoria') {
                     const cases = (await NurseDB.all('cases')).sort((a,b)=>a.date.localeCompare(b.date));
                     const chosen = cases.filter(c=>c.starred);
                     html = `
-                        ${UIHelpers.notice('Organiza evidencias para la memoria final.', true)}
-                        <div class="metric-row"><div class="metric"><b>${cases.length}</b><span>casos</span></div><div class="metric"><b>${chosen.length}</b><span>destacados</span></div></div>
-                        ${UIHelpers.section('Casos Destacados')}
-                        <div class="list">${chosen.map(c=>UIHelpers.listRow({title: c.diagnosis, sub: dateFmt(c.date), icon:'★', action: `data-action="openSlide" data-view="caseDetail" data-id="${c.id}"`})).join('') || UIHelpers.noData('Ninguno marcado')}</div>`;
+                        ${UIHelpers.notice('Usa estos casos destacados como base para redactar tu Trabajo o Memoria Final de Prácticas.', true)}
+                        <div class="metric-row">
+                            <div class="metric"><b>${cases.length}</b><span>Casos Totales</span></div>
+                            <div class="metric"><b style="color:var(--warning)">${chosen.length}</b><span>Destacados</span></div>
+                        </div>
+                        <h4 style="margin: 24px 0 8px;">Tus Casos Favoritos</h4>
+                        <div class="list">${chosen.map(c=>UIHelpers.listRow({
+                            title: c.diagnosis, 
+                            sub: `${dateFmt(c.date)} · ${c.area || 'Planta'}`, 
+                            icon:'★', 
+                            action: `data-action="openSlide" data-view="caseDetail" data-id="${c.id}"`
+                        })).join('') || UIHelpers.noData('No hay casos marcados', 'Edita un caso clínico y marca la casilla "Destacar para Memoria".')}</div>`;
                 }
                 else if (view === 'medSearch') {
                     html = `
-                        <div class="form-row"><input class="field" id="cimaQ" placeholder="Ej. Furosemida" style="margin:0"><button class="btn primary" id="cimaBtn">Buscar en CIMA</button></div>
-                        <div id="cimaRes" style="margin-top:16px">${UIHelpers.noData('CIMA AEMPS', 'Busca por principio activo o marca.')}</div>`;
+                        ${UIHelpers.notice('Conectado a la AEMPS (Agencia Española de Medicamentos).', true)}
+                        <div class="card" style="display:flex; gap:8px; padding:12px;">
+                            <input class="field" id="cimaQ" placeholder="Ej. Paracetamol, Adrenalina..." style="margin:0; flex:1;" autofocus>
+                            <button class="btn primary" id="cimaBtn" style="min-width:80px;">Buscar</button>
+                        </div>
+                        <div id="cimaRes" style="margin-top:16px">${UIHelpers.noData('Buscador CIMA', 'Busca por principio activo o marca comercial para descargar su ficha técnica oficial.')}</div>`;
                 }
-                if(view === 'diseaseSearch') {
-                const doSearch = async () => {
-                    const q = $('#icdQ').value.trim();
-                    if(q.length < 3) return;
-                    const box = $('#icdRes');
-                    box.innerHTML = '<div class="empty-state">Buscando en CIE-11...</div>';
-                    try {
-                        const url = `https://nurseflow-api.carlosb-n.workers.dev/icd/search?q=${encodeURIComponent(q)}&includeKeywordMatches=true`;
-                        const r = await fetch(url, { headers: { 'Accept-Language': 'es' } });
-                        const data = await r.json();
-                        const items = data.destinationEntities || [];
-                        
-                        box.innerHTML = `<div class="list">${items.slice(0,15).map(x => {
-                            const title = x.title.replace(/<[^>]+>/g, '');
-                            const theCode = x.theCode || 'S/C';
-                            return UIHelpers.listRow({
-                                title: title,
-                                sub: `Código: ${theCode}`,
-                                icon: '🩺',
-                                // AQUÍ inyectamos el id y el código juntos
-                                action: `data-action="openSlide" data-view="diseaseDetail" data-id="${x.id}\vert{}${theCode}"`
-                            });
-                        }).join('') || UIHelpers.noData('Sin resultados')}</div>`;
-                    } catch(e) {
-                        box.innerHTML = UIHelpers.notice('Error conectando a la API.', false, true);
-                    }
-                };
-                
-                $('#icdBtn').onclick = doSearch;
-                $('#icdQ').onkeydown = e => { if(e.key === 'Enter') doSearch(); };
-            }
+                else if (view === 'diseaseSearch') {
+                    html = `
+                        ${UIHelpers.notice('Conectado a la base de datos oficial CIE-11 de la OMS.', true)}
+                        <div class="card" style="display:flex; gap:8px; padding:12px;">
+                            <input class="field" id="icdQ" placeholder="Ej. Insuficiencia cardíaca..." style="margin:0; flex:1;" autofocus>
+                            <button class="btn primary" id="icdBtn" style="min-width:80px;">Buscar</button>
+                        </div>
+                        <div id="icdRes" style="margin-top:16px">
+                            ${UIHelpers.noData('Guía de Patologías', 'Busca cualquier enfermedad, síndrome o trastorno para ver su definición, exclusiones y añadir tus planes de cuidados.')}
+                        </div>`;
+                }
                 else if (view === 'diseaseDetail') {
-                    // Extraemos el ID y el código que pasamos desde la lista (separados por |)
                     const [fullId, passedCode] = String(data).split('|');
                     const entityId = fullId.split('/').pop(); 
                     
-                    html = `<div class="empty-state">Descargando datos clínicos de la OMS...</div>`;
+                    html = `
+                        <div class="empty-state" style="margin-top: 40px;">
+                            <div class="loader" style="font-size:2rem; margin-bottom:16px;">🔄</div>
+                            <strong>Descargando datos clínicos...</strong>
+                            <span class="muted">Conectando con la Organización Mundial de la Salud</span>
+                        </div>`;
                     
                     try {
                         const workerUrl = `https://nurseflow-api.carlosb-n.workers.dev/icd/entity/${entityId}`;
@@ -1062,116 +1155,151 @@
                         const exclusions = (d.exclusion || []).map(e => e.label?.['@value']).filter(Boolean);
                         
                         const localNote = await NurseDB.get('pae', entityId) || { notes: '' };
-                        const block = (t, txt) => txt ? `<div class="clinical-section"><h3>${t}</h3><p>${esc(txt)}</p></div>` : '';
+                        const block = (t, txt) => txt ? `<div class="card"><h4 style="margin-bottom:8px;">${t}</h4><p style="line-height:1.6;">${esc(txt)}</p></div>` : '';
                         
-                        // Usamos el código de la lista (passedCode) si la entidad base no lo trae
                         const displayCode = passedCode || d.code || 'S/C';
 
                         html = `
-                            <div class="card">
-                                <div class="sub muted">CIE-11 Base OMS</div>
-                                <h3 style="font-size:1.3rem; margin-top:4px; margin-bottom:8px;">${esc(title)}</h3>
-                                <span class="pill primary">CIE-11: ${esc(displayCode)}</span>
+                            <div class="card hero" style="background:var(--text-main); color:white;">
+                                <div class="sub" style="color:rgba(255,255,255,0.7); margin-bottom:4px;">CIE-11 Base OMS</div>
+                                <h2 style="font-size:1.4rem; line-height:1.2; margin-bottom:12px;">${esc(title)}</h2>
+                                <span class="pill" style="background:rgba(255,255,255,0.2); color:white;">Código: ${esc(displayCode)}</span>
                             </div>
                             
                             ${block('Definición Médica', definition)}
                             
                             ${synonyms.length ? `
-                            <div class="clinical-section">
-                                <h3>También conocido como</h3>
+                            <div class="card">
+                                <h4 style="margin-bottom:8px;">También conocido como (Sinónimos)</h4>
                                 <div class="tag-cloud">
-                                    ${synonyms.slice(0, 8).map(s => `<span class="tag">${esc(s)}</span>`).join('')}
-                                    ${synonyms.length > 8 ? '<span class="tag">...</span>' : ''}
+                                    ${synonyms.slice(0, 8).map(s => `<span class="tag" style="font-size:0.8rem;">${esc(s)}</span>`).join('')}
+                                    ${synonyms.length > 8 ? '<span class="tag muted">...</span>' : ''}
                                 </div>
                             </div>` : ''}
                             
                             ${exclusions.length ? `
-                            <div class="clinical-section critical">
-                                <h3>Excluye (Diagnóstico Diferencial)</h3>
-                                <ul style="padding-left:20px; color:var(--text-muted); font-size:0.9rem;">
-                                    ${exclusions.map(e => `<li>${esc(e)}</li>`).join('')}
+                            <div class="card" style="border-left: 4px solid var(--danger); background:var(--danger-bg);">
+                                <h4 style="margin-bottom:8px; color:var(--danger);">Excluye (Diagnóstico Diferencial)</h4>
+                                <ul style="padding-left:20px; color:var(--text-main); font-size:0.9rem; line-height:1.5;">
+                                    ${exclusions.map(e => `<li style="margin-bottom:4px;">${esc(e)}</li>`).join('')}
                                 </ul>
                             </div>` : ''}
                             
-                            <div class="card" style="border-left: 4px solid var(--warning); margin-top:24px;">
-                                <h3 style="margin-bottom:8px;">Enfoque de Enfermería (Tus notas)</h3>
-                                <p class="muted small" style="margin-bottom:12px;">Escribe aquí los diagnósticos NANDA, intervenciones (NIC) o cuidados clave asociados a este diagnóstico médico.</p>
-                                <textarea class="field" id="nursingNotes" placeholder="Ej. Riesgo de infección, vigilar constantes c/4h, cabecero a 45º..." style="min-height:120px;">${esc(localNote.notes)}</textarea>
-                                ${!state.readOnlyMode ? `<button class="btn primary block" id="saveNursingNotes" data-id="${esc(entityId)}">Guardar Cuidados</button>` : ''}
+                            <div class="card" style="border: 2px solid var(--primary); margin-top:24px; box-shadow: 0 4px 6px rgba(13, 148, 136, 0.1);">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+                                    <span style="font-size:1.5rem;">👩‍⚕️</span>
+                                    <h3 style="margin:0; color:var(--primary);">Plan de Cuidados (Tus notas)</h3>
+                                </div>
+                                <p class="muted small" style="margin-bottom:16px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+                                    Escribe aquí los diagnósticos NANDA, intervenciones (NIC) o cuidados de vigilancia clínica asociados a este diagnóstico médico.
+                                </p>
+                                <textarea class="field" id="nursingNotes" placeholder="Ej. \n- NANDA: Deterioro del intercambio de gases...\n- Vigilar saturación de O2 c/4h\n- Posición Fowler..." style="min-height:150px; font-family:monospace; line-height:1.5; background:var(--bg-hover); border:none;">${esc(localNote.notes)}</textarea>
+                                ${!state.readOnlyMode ? `<button class="btn primary block" id="saveNursingNotes" data-id="${esc(entityId)}">Guardar Plan de Cuidados</button>` : ''}
                             </div>
                         `;
                     } catch (err) {
-                        html = UIHelpers.notice('Error al cargar la entidad. Comprueba la conexión.', false, true);
+                        html = UIHelpers.notice('Error al cargar la entidad. Comprueba tu conexión a internet o el servidor.', false, true);
                     }
                 }
                 else if (view === 'medLocalDetail') {
                     const m = await NurseDB.get('meds', data); if (!m) return; const c = m.clinical || {};
-                    const block = (title, text, danger = false) => text ? `<div class="clinical-section ${danger ? 'critical' : ''}"><h3>${title}</h3><p>${esc(text)}</p></div>` : '';
+                    const block = (title, text, danger = false) => text ? `<div class="card" ${danger ? 'style="border-left: 4px solid var(--danger);"' : ''}><h4 style="margin-bottom:8px; ${danger ? 'color:var(--danger);' : ''}">${title}</h4><p style="line-height:1.5; font-size:0.95rem;">${esc(text)}</p></div>` : '';
                     html = `
-                        <div class="card">
-                            <div class="sub muted">Copia Offline · Registro ${m.registration}</div>
-                            <h3 style="font-size:1.3rem; margin-bottom:8px;">${esc(m.name)}</h3>
-                            <div style="background: color-mix(in srgb, var(--primary) 10%, transparent); padding: 12px; border-radius: var(--radius-sm); border-left: 4px solid var(--primary);">
-                                <strong style="color: var(--primary); display:block; margin-bottom:4px;">Principio Activo:</strong>
-                                <span>${esc(m.active)}</span>
+                        <div class="card hero">
+                            <div class="sub" style="color:rgba(255,255,255,0.8); margin-bottom:4px;">Botiquín Offline · Reg: ${m.registration}</div>
+                            <h2 style="font-size:1.4rem; margin-bottom:12px; line-height:1.2;">${esc(m.name)}</h2>
+                            <div style="background: rgba(0,0,0,0.2); padding: 12px; border-radius: var(--radius-sm);">
+                                <strong style="color: white; display:block; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;">Principio Activo</strong>
+                                <span style="font-size:1.1rem;">${esc(m.active)}</span>
                             </div>
                         </div>
                         ${block('Para qué se usa (Indicaciones FT 4.1)', c.indicaciones)}
-                        ${block('Alergias y Contraindicaciones (FT 4.3)', c.contraindications, true)}
                         ${block('Posología (FT 4.2)', c.posology)}
+                        ${block('Alergias y Contraindicaciones (FT 4.3)', c.contraindications, true)}
                         ${block('Advertencias y Precauciones (FT 4.4)', c.advertencias, true)}
                         ${block('Interacciones (FT 4.5)', c.interactions)}
                         ${block('Reacciones Adversas (FT 4.8)', c.adverse)}
-                        ${!state.readOnlyMode ? `<button class="btn danger block" data-action="deleteMed" data-id="${m.id}" style="margin-top:24px">Eliminar del botiquín</button>` : ''}`;
+                        ${!state.readOnlyMode ? `<div style="margin-top:32px;"><button class="btn danger block" data-action="deleteMed" data-id="${m.id}">Eliminar del botiquín offline</button></div>` : ''}`;
                 }
                 else if (view === 'scanner') {
                     html = `
-                        <div id="scanArea">
-                            ${'BarcodeDetector' in window ? `<div class="scanner-container"><video id="scanVid" autoplay playsinline></video><div class="scanner-line"></div></div>` : UIHelpers.notice('Tu navegador no soporta el escáner de cámara nativo.', false, true)}
-                        </div>
-                        <div class="form-row"><input class="field" id="scanManual" placeholder="Código numérico..." inputmode="numeric"><button class="btn primary" id="scanManualBtn">Buscar Fármaco</button></div>`;
+                        <div class="card">
+                            <h3 style="margin-bottom:12px;">Escáner de código de barras</h3>
+                            <div id="scanArea">
+                                ${'BarcodeDetector' in window ? `<div class="scanner-container"><video id="scanVid" autoplay playsinline></video><div class="scanner-line"></div></div>` : UIHelpers.notice('Tu navegador no soporta el escáner de cámara nativo.', false, true)}
+                            </div>
+                            <hr style="border:0; border-top:1px solid var(--border-color); margin: 16px 0;">
+                            <label>Búsqueda manual (Código Nacional)</label>
+                            <div class="form-row" style="display:flex; gap:8px;">
+                                <input class="field" id="scanManual" placeholder="Ej. 654321" inputmode="numeric" style="margin:0; flex:1;">
+                                <button class="btn primary" id="scanManualBtn" style="min-width:80px;">Buscar</button>
+                            </div>
+                        </div>`;
                 }
                 else if (view === 'calculators') {
                     const calcs = [['mlh','Velocidad (mL/h)'],['drops','Goteo (gts/min)'],['dose','Dosis Peso (mL)'],['bmi','IMC (kg/m²)'],['bsa','Sup. Corporal (m²)'],['balance','Balance Hídrico (mL)'],['map','Tensión Art. Media (PAM)'],['mcg','Dosis Perfusión (mcg/kg/min)']];
-                    html = `<div class="list">${calcs.map(c=>UIHelpers.listRow({title: c[1], sub: 'Calculadora clínica', icon: '÷', action: `data-action="openSlide" data-view="calcForm" data-id="${c[0]}"`})).join('')}</div>${UIHelpers.clinicalWarning()}`;
+                    html = `
+                        ${UIHelpers.clinicalWarning()}
+                        <div class="list">${calcs.map(c=>UIHelpers.listRow({title: c[1], sub: 'Calculadora clínica', icon: '÷', action: `data-action="openSlide" data-view="calcForm" data-id="${c[0]}"`})).join('')}</div>`;
                 }
                 else if (view === 'calcForm') {
                     const defs = {
                         mlh: ['Velocidad de infusión', [['vol','Volumen total (mL)'],['hours','Tiempo (h)']], 'mL/h'],
                         drops: ['Ritmo de goteo', [['vol','Volumen (mL)'],['minutes','Tiempo (min)'],['factor','Factor (gotas/mL) [Normo=20, Micro=60]']], 'gts/min'],
-                        dose: ['Dosis por peso', [['mgkg','Dosis prescrita (mg/kg)'],['kg','Peso (kg)'],['conc','Concentración (mg/mL)']], 'mL'],
+                        dose: ['Dosis por peso', [['mgkg','Dosis prescrita (mg/kg)'],['kg','Peso del paciente (kg)'],['conc','Concentración vial (mg/mL)']], 'mL'],
                         bmi: ['Índice Masa Corporal', [['kg','Peso (kg)'],['m','Talla (m)']], 'kg/m²'],
                         bsa: ['Sup. Corporal (Mosteller)', [['kg','Peso (kg)'],['cm','Talla (cm)']], 'm²'],
-                        balance: ['Balance Hídrico', [['in','Entradas (mL)'],['out','Salidas (mL)']], 'mL'],
+                        balance: ['Balance Hídrico', [['in','Entradas totales (mL)'],['out','Salidas totales (mL)']], 'mL'],
                         map: ['Presión Arterial Media (PAM)', [['sys','Sistólica (mmHg)'],['dia','Diastólica (mmHg)']], 'mmHg'],
-                        mcg: ['Velocidad de Perfusión', [['dosis','Dosis prescrita (mcg/kg/min)'],['kg','Peso (kg)'],['mg','Fármaco total (mg)'],['vol','Volumen suero (mL)']], 'mL/h']
+                        mcg: ['Velocidad de Perfusión', [['dosis','Dosis prescrita (mcg/kg/min)'],['kg','Peso (kg)'],['mg','Fármaco total vial (mg)'],['vol','Volumen suero (mL)']], 'mL/h']
                     };
                     const d = defs[data];
                     html = `
-                        <form id="calcExec" data-type="${data}">
-                            ${d[1].map(i=>`<label>${i[1]}</label><input class="field" type="number" step="any" name="${i[0]}" required ${i[0]==='factor'?'value="20"':''}>`).join('')}
-                            <button class="btn primary block">Calcular</button>
-                        </form>
+                        <div class="card">
+                            <h3 style="margin-bottom:16px;">${d[0]}</h3>
+                            <form id="calcExec" data-type="${data}">
+                                ${d[1].map(i=>`<label>${i[1]}</label><input class="field" type="number" step="any" name="${i[0]}" required ${i[0]==='factor'?'value="20"':''}>`).join('')}
+                                <button class="btn primary block" style="margin-top:16px;">Calcular</button>
+                            </form>
+                        </div>
+                        
                         <div id="calcResContainer" class="hidden">
-                            <div id="calcRes" class="score-big"><b>0</b><span>${d[2]}</span></div>
-                            <div class="notice info" style="margin-top:12px;">
-                                🔍 <strong>Verificación obligatoria:</strong> Comprueba siempre el cálculo con el protocolo y guía farmacológica de tu unidad hospitalaria antes de administrar.
+                            <div class="card" style="background:var(--bg-hover); text-align:center; border:2px solid var(--primary);">
+                                <div class="muted small" style="margin-bottom:8px; text-transform:uppercase; letter-spacing:1px;">Resultado</div>
+                                <div id="calcRes" style="color:var(--primary);">
+                                    <b style="font-size:3.5rem; line-height:1;">0</b>
+                                    <span style="font-size:1.2rem; margin-left:4px;">${d[2]}</span>
+                                </div>
                             </div>
-                            <button class="btn block" id="copyCalcBtn" style="margin-top:12px;">Copiar para verificación</button>
+                            <button class="btn block" id="copyCalcBtn" style="margin-bottom:24px;">📋 Copiar resultado</button>
                         </div>
                         ${UIHelpers.clinicalWarning()}`;
                 }
                 else if (view === 'labs' || view === 'dictionary') {
                     const dataSrc = view === 'labs' ? NURSE_DATA.labs : NURSE_DATA.glossary;
-                    html = `<input class="field" id="filterQ" placeholder="Filtrar..."><div class="list" id="filterList">${dataSrc.map(x=>UIHelpers.listRow({title: x[0], sub: view==='labs'?`${x[3]} ${x[2]}`:x[1], icon: view==='labs'?x[1]:x[0].charAt(0)})).join('')}</div>`;
+                    html = `
+                        <div class="card" style="padding:12px;"><input class="field" id="filterQ" placeholder="Buscar concepto..." style="margin:0;" autofocus></div>
+                        <div class="list" id="filterList">${dataSrc.map(x=>UIHelpers.listRow({title: x[0], sub: view==='labs'?`${x[3]} ${x[2]}`:x[1], icon: view==='labs'?x[1]:x[0].charAt(0)})).join('')}</div>`;
                 }
                 else if (view === 'flashcards') {
                     const rows = await NurseDB.all('flashcards');
-                    html = `<form id="flashForm" class="card"><label>Pregunta</label><input class="field" name="q" required><label>Respuesta</label><textarea class="field" name="a" required style="min-height:60px"></textarea><label>Tema</label><input class="field" name="topic" value="General"><button class="btn primary block">Añadir Flashcard</button></form><div class="list">${rows.map(x=>`<div class="list-row"><div class="grow"><strong>${esc(x.q)}</strong><div class="sub">${esc(x.topic)} · Repaso: ${x.due?dateFmt(x.due):'Hoy'}</div></div><button class="btn icon-only" data-action="deleteCard" data-id="${x.id}">×</button></div>`).join('') || UIHelpers.noData('Sin tarjetas')}</div>`;
+                    html = `
+                        <form id="flashForm" class="card">
+                            <h3 style="margin-bottom:16px;">Crear Tarjeta</h3>
+                            <label>Pregunta (Anverso)</label>
+                            <input class="field" name="q" required placeholder="Ej. Antídoto del Paracetamol">
+                            <label>Respuesta (Reverso)</label>
+                            <textarea class="field" name="a" required style="min-height:80px" placeholder="Ej. N-Acetilcisteína"></textarea>
+                            <label>Tema o Asignatura</label>
+                            <input class="field" name="topic" value="General">
+                            <button class="btn primary block" style="margin-top:8px;">Añadir Flashcard</button>
+                        </form>
+                        <h4 style="margin:24px 0 8px;">Tus Tarjetas</h4>
+                        <div class="list">${rows.map(x=>`<div class="list-row"><div class="grow"><strong>${esc(x.q)}</strong><div class="sub">${esc(x.topic)} · Próx. repaso: ${x.due?dateFmt(x.due):'Hoy'}</div></div><button class="btn icon-only" data-action="deleteCard" data-id="${x.id}">×</button></div>`).join('') || UIHelpers.noData('Botiquín mental vacío', 'Crea flashcards para memorizar conceptos clave.')}</div>`;
                 }
                 else if (view === 'flashReview') {
                     const cards = (await NurseDB.all('flashcards')).filter(c=>!c.due||c.due<=getLocalISOToday());
-                    if(!cards.length) return UI.toast('No hay tarjetas pendientes hoy');
+                    if(!cards.length) return UI.toast('¡Genial! No hay tarjetas pendientes de repaso por hoy.');
                     html = `<div id="flashGame" data-idx="0"></div>`;
                 }
                 else if (view === 'quiz') {
@@ -1179,60 +1307,147 @@
                 }
                 else if (view === 'practiceReview') {
                     const cases = await NurseDB.all('cases'); const tags = [...new Set(cases.flatMap(c=>[c.review, c.diagnosis].filter(Boolean)))];
-                    html = `${UIHelpers.notice('Toca un tema de tus prácticas para generar una flashcard de repaso.', true)}<div class="tag-cloud">${tags.map(t=>`<button class="tag" data-action="createCardFromTag" data-val="${esc(t)}">${esc(t)}</button>`).join('') || UIHelpers.noData('Registra casos con dudas o diagnósticos')}</div>`;
+                    html = `
+                        ${UIHelpers.notice('Convierte tus dudas de las prácticas en preguntas de repaso con un solo toque.', true)}
+                        <div class="card">
+                            <h4 style="margin-bottom:16px;">Conceptos de tus casos clínicos</h4>
+                            <div class="tag-cloud">${tags.map(t=>`<button class="tag" style="background:var(--bg-hover);" data-action="createCardFromTag" data-val="${esc(t)}">➕ ${esc(t)}</button>`).join('') || UIHelpers.noData('Aún sin dudas', 'Registra casos clínicos con dudas o diagnósticos para generar tarjetas.')}</div>
+                        </div>`;
                 }
                 else if (view === 'studyStats') {
                     const cards = await NurseDB.all('flashcards');
-                    html = `<div class="metric-row"><div class="metric"><b>${cards.length}</b><span>total</span></div><div class="metric"><b>${cards.filter(c=>c.reps>0).length}</b><span>repasadas</span></div><div class="metric"><b>${cards.filter(c=>c.due>getLocalISOToday()).length}</b><span>al día</span></div><div class="metric"><b>${new Set(cards.map(c=>c.topic)).size}</b><span>temas</span></div></div>`;
+                    html = `
+                        <div class="metric-row">
+                            <div class="metric"><b>${cards.length}</b><span>Total</span></div>
+                            <div class="metric"><b style="color:var(--primary)">${cards.filter(c=>c.reps>0).length}</b><span>Repasadas</span></div>
+                            <div class="metric"><b style="color:var(--success)">${cards.filter(c=>c.due>getLocalISOToday()).length}</b><span>Al día</span></div>
+                            <div class="metric"><b>${new Set(cards.map(c=>c.topic)).size}</b><span>Temas</span></div>
+                        </div>`;
                 }
                 else if (view === 'settingsMain') {
-                    html = `<div class="list">${[['Perfil Académico','settingsProfile','👤'],['Prácticum','settingsPracticum','🏥'],['Apariencia','settingsTheme','🎨'],['Privacidad y Bloqueo','settingsPrivacy','🔒'],['Exportar / Borrar','settingsData','💾']].map(i=>UIHelpers.listRow({title:i[0], icon:i[2], action:`data-action="openSlide" data-view="${i[1]}"`})).join('')}</div><div style="text-align:center; margin-top:32px" class="muted small">NurseFlow Pro v2.5 · 100% Offline</div>`;
+                    html = `
+                        <div class="list">
+                            ${[['Perfil Académico','settingsProfile','👤'],['Prácticum (Hospital)','settingsPracticum','🏥'],['Apariencia y Avisos','settingsTheme','🎨'],['Privacidad y Bloqueo (PIN)','settingsPrivacy','🔒'],['Base de Datos (Exportar/Borrar)','settingsData','💾']].map(i=>UIHelpers.listRow({title:i[0], icon:i[2], action:`data-action="openSlide" data-view="${i[1]}"`})).join('')}
+                        </div>
+                        <div style="text-align:center; margin-top:40px; padding-bottom: 20px;">
+                            <div style="font-weight:bold; font-size:1.1rem; color:var(--primary);">NurseFlow Pro</div>
+                            <div class="muted small" style="margin-top:4px;">Versión 2.5 · Entorno 100% Offline y Privado</div>
+                            <div class="muted small" style="margin-top:2px;">Diseñado para Enfermería</div>
+                        </div>`;
                 }
                 else if (view === 'settingsProfile') {
-                    html = `<form id="profForm"><label>Nombre</label><input class="field" name="name" value="${esc(state.settings.profileName)}"><label>Universidad</label><select class="field" name="uni"><option value="UCV" ${state.settings.university==='UCV'?'selected':''}>UCV</option><option value="Otro" ${state.settings.university!=='UCV'?'selected':''}>Otra</option></select><label>Curso</label><select class="field" name="course">${[1,2,3,4].map(n=>`<option value="${n}" ${String(n)===String(state.settings.courseNumber)?'selected':''}>${n}º Enfermería</option>`).join('')}</select><button class="btn primary block">Guardar</button></form>`;
+                    html = `
+                        <form id="profForm" class="card">
+                            <label>Nombre del Estudiante / Profesional</label><input class="field" name="name" value="${esc(state.settings.profileName)}">
+                            <div class="form-row">
+                                <div><label>Universidad</label><select class="field" name="uni"><option value="UCV" ${state.settings.university==='UCV'?'selected':''}>UCV</option><option value="Otro" ${state.settings.university!=='UCV'?'selected':''}>Otra</option></select></div>
+                                <div><label>Curso</label><select class="field" name="course">${[1,2,3,4].map(n=>`<option value="${n}" ${String(n)===String(state.settings.courseNumber)?'selected':''}>${n}º</option>`).join('')}</select></div>
+                            </div>
+                            <button class="btn primary block" style="margin-top:16px;">Guardar Perfil</button>
+                        </form>`;
                 }
                 else if (view === 'settingsPracticum') {
                     html = `
-                        <form id="pracForm">
-                            <label class="switch-row"><span><strong>Habilitar Prácticas</strong></span><span class="switch"><input type="checkbox" id="hasPracToggle" ${state.settings.hasPracticum?'checked':''}><span class="slider"></span></span></label>
+                        <form id="pracForm" class="card">
+                            <label class="switch-row" style="margin-bottom:24px;"><span><strong>Activar periodo de prácticas</strong></span><span class="switch"><input type="checkbox" id="hasPracToggle" ${state.settings.hasPracticum?'checked':''}><span class="slider"></span></span></label>
+                            
                             <div id="pracFields" class="${state.settings.hasPracticum?'':'hidden'}">
-                                <label>Nombre del Prácticum</label><input class="field" name="practicum" value="${esc(state.settings.practicum)}">
-                                <label>Centro / Hospital</label><input class="field" name="hospital" value="${esc(state.settings.hospital)}">
-                                <label>Servicio habituál</label><input class="field" name="service" value="${esc(state.settings.service)}">
-                                <div class="form-row"><div><label>Inicio</label><input class="field" type="date" name="start" value="${state.settings.periodStart}"></div><div><label>Fin</label><input class="field" type="date" name="end" value="${state.settings.periodEnd}"></div></div>
+                                <label>Asignatura (Prácticum)</label>
+                                <input class="field" name="practicum" value="${esc(state.settings.practicum)}" placeholder="Ej. Prácticum II">
+                                <label>Centro Sanitario / Hospital</label>
+                                <input class="field" name="hospital" value="${esc(state.settings.hospital)}" placeholder="Ej. Hospital Clínico">
+                                <label>Servicio o Unidad habituál</label>
+                                <input class="field" name="service" value="${esc(state.settings.service)}" placeholder="Ej. UCI, Planta M.Interna...">
+                                <div class="form-row">
+                                    <div><label>Fecha Inicio</label><input class="field" type="date" name="start" value="${state.settings.periodStart}"></div>
+                                    <div><label>Fecha Fin</label><input class="field" type="date" name="end" value="${state.settings.periodEnd}"></div>
+                                </div>
                             </div>
-                            <button class="btn primary block">Guardar</button>
+                            <button class="btn primary block" style="margin-top:16px;">Guardar Configuración</button>
                         </form>`;
                 }
                 else if (view === 'settingsTheme') {
-                    html = `<select class="field" id="themeSel"><option value="system" ${state.settings.theme==='system'?'selected':''}>Sistema</option><option value="light" ${state.settings.theme==='light'?'selected':''}>Claro</option><option value="dark" ${state.settings.theme==='dark'?'selected':''}>Oscuro</option></select><label class="switch-row"><span><strong>Avisos Clínicos</strong></span><span class="switch"><input type="checkbox" id="warnSel" ${state.settings.showClinicalWarnings?'checked':''}><span class="slider"></span></span></label><button class="btn primary block" id="saveTheme">Aplicar</button>`;
+                    html = `
+                        <div class="card">
+                            <label>Tema visual</label>
+                            <select class="field" id="themeSel"><option value="system" ${state.settings.theme==='system'?'selected':''}>Automático (Sistema)</option><option value="light" ${state.settings.theme==='light'?'selected':''}>☀️️ Claro</option><option value="dark" ${state.settings.theme==='dark'?'selected':''}>🌙 Oscuro</option></select>
+                            
+                            <hr style="border:0; border-top:1px solid var(--border-color); margin: 24px 0;">
+                            
+                            <label class="switch-row">
+                                <span>
+                                    <strong>Avisos Legales Clínicos</strong>
+                                    <span class="sub">Muestra la advertencia de comprobación de protocolos al final de calculadoras y guías.</span>
+                                </span>
+                                <span class="switch"><input type="checkbox" id="warnSel" ${state.settings.showClinicalWarnings?'checked':''}><span class="slider"></span></span>
+                            </label>
+                            
+                            <button class="btn primary block" id="saveTheme" style="margin-top:24px;">Aplicar Cambios</button>
+                        </div>`;
                 }
                 else if (view === 'settingsPrivacy') {
                     html = `
-                        ${UIHelpers.notice('Bloqueo de seguridad local por PIN (6 dígitos) o Biometría.', true)}
-                        <label class="switch-row"><span><strong>Bloquear PWA</strong></span><span class="switch"><input type="checkbox" id="lockTog" ${state.settings.lockEnabled?'checked':''}><span class="slider"></span></span></label>
-                        <label>Método de desbloqueo</label><select class="field" id="lockMet"><option value="pin" ${state.settings.lockMethod==='pin'?'selected':''}>PIN de 6 dígitos</option><option value="webauthn" ${state.settings.lockMethod==='webauthn'?'selected':''}>Biometría Nativa</option></select>
-                        <label>Nuevo PIN (6-8 dígitos)</label><input class="field" type="password" inputmode="numeric" id="newPin" placeholder="Mínimo 6 dígitos">
-                        <label>Auto-bloqueo</label><select class="field" id="autoL"><option value="0">Nunca</option><option value="1" ${state.settings.autoLock==1?'selected':''}>1 min</option><option value="5" ${state.settings.autoLock==5?'selected':''}>5 min</option></select>
-                        <button class="btn primary block" id="savePriv">Guardar Privacidad</button>`;
+                        ${UIHelpers.notice('Protege el acceso a la aplicación para mantener seguros los registros de tus casos clínicos.', true)}
+                        <div class="card">
+                            <label class="switch-row" style="margin-bottom:24px;">
+                                <span style="font-size:1.1rem; color:var(--primary);"><strong>🔒 Bloquear PWA al salir</strong></span>
+                                <span class="switch"><input type="checkbox" id="lockTog" ${state.settings.lockEnabled?'checked':''}><span class="slider"></span></span>
+                            </label>
+                            
+                            <label>Método de desbloqueo</label>
+                            <select class="field" id="lockMet">
+                                <option value="pin" ${state.settings.lockMethod==='pin'?'selected':''}>Teclado PIN (6 dígitos)</option>
+                                <option value="webauthn" ${state.settings.lockMethod==='webauthn'?'selected':''}>Biometría Nativa (FaceID / Huella)</option>
+                            </select>
+                            
+                            <label>Configurar Nuevo PIN</label>
+                            <input class="field" type="password" inputmode="numeric" id="newPin" placeholder="Obligatorio (6 a 8 números)">
+                            
+                            <label>Auto-bloqueo por inactividad</label>
+                            <select class="field" id="autoL">
+                                <option value="0">Solo al cerrar la app</option>
+                                <option value="1" ${state.settings.autoLock==1?'selected':''}>Tras 1 minuto</option>
+                                <option value="5" ${state.settings.autoLock==5?'selected':''}>Tras 5 minutos</option>
+                            </select>
+                            
+                            <button class="btn primary block" id="savePriv" style="margin-top:16px;">Guardar Privacidad</button>
+                        </div>`;
                 }
                 else if (view === 'settingsData') {
-                    html = `<div class="list">
-                        <button class="list-row clickable" id="exportModalBtn"><div class="avatar">⇩</div><div class="grow"><strong>Exportar JSON (Filtrado)</strong></div></button>
-                        <button class="list-row clickable" id="importBtn"><div class="avatar">⇧</div><div class="grow"><strong>Importar JSON</strong></div></button>
-                        <button class="list-row clickable" id="wipeBtn"><div class="avatar" style="color:var(--danger)">!</div><div class="grow"><strong>Borrar TODO</strong></div></button>
-                    </div>`;
+                    html = `
+                        ${UIHelpers.notice('Tu información reside exclusivamente en tu dispositivo móvil. Realiza copias de seguridad regularmente.', true)}
+                        <div class="list">
+                            <button class="list-row clickable" id="exportModalBtn">
+                                <div class="avatar" style="background:var(--primary); color:white;">⇩</div>
+                                <div class="grow"><strong>Exportar Copia de Seguridad</strong><div class="sub">Archivo JSON local</div></div>
+                            </button>
+                            <button class="list-row clickable" id="importBtn">
+                                <div class="avatar">⇧</div>
+                                <div class="grow"><strong>Importar Datos</strong><div class="sub">Restaurar archivo JSON</div></div>
+                            </button>
+                        </div>
+                        <div class="card" style="margin-top:32px; border-color:var(--danger);">
+                            <h4 style="color:var(--danger); margin-bottom:8px;">Zona de Peligro</h4>
+                            <p class="muted small" style="margin-bottom:16px;">Esta acción borrará todos tus casos, tareas, clases y configuraciones de este dispositivo sin posibilidad de recuperación.</p>
+                            <button class="btn danger block" id="wipeBtn">Borrar todos los datos de la App</button>
+                        </div>`;
                 }
                 else if (view === 'globalSearch') {
-                    html = `<input class="field" id="gSearchQ" placeholder="Medicamento, caso, técnica..." autofocus><div id="gSearchRes" class="list" style="margin-top:16px"></div>`;
+                    html = `
+                        <div class="card" style="padding:12px;">
+                            <input class="field" id="gSearchQ" placeholder="🔍 Buscar medicamento, caso, técnica..." autofocus style="margin:0;">
+                        </div>
+                        <div id="gSearchRes" class="list" style="margin-top:16px">
+                            <div class="empty-state small">Escribe para buscar en toda la base de datos local</div>
+                        </div>`;
                 }
 
-                if(!html) html = UIHelpers.noData('Vista no encontrada');
+                if(!html) html = UIHelpers.noData('Vista no encontrada', 'Ruta no válida.');
                 content.innerHTML = html;
                 setupSlideOverEvents(view, data);
 
             } catch (e) {
-                content.innerHTML = UIHelpers.notice(`Error: ${e.message}`, false, true);
+                content.innerHTML = UIHelpers.notice(`Error de renderizado: ${e.message}`, false, true);
             }
         }
 
@@ -1242,9 +1457,9 @@
                 $('#classForm').onsubmit = async e => {
                     e.preventDefault(); const f = new FormData(e.target);
                     const sel = $('#subjectSelect')?.value, t = (sel && sel !== '__custom' ? sel : $('#customSubject').value).trim();
-                    if(!t) return UI.toast('Falta título');
+                    if(!t) return UI.toast('Falta título de la asignatura');
                     await NurseDB.put('schedule', {id: data||uid(), title: t, day: +f.get('day'), room: f.get('room').trim(), start: f.get('start'), end: f.get('end')});
-                    state.slideOverOpen = false; renderView(); UI.toast('Clase guardada');
+                    state.slideOverOpen = false; renderView(); UI.toast('Horario actualizado');
                 };
             }
             if(view === 'diseaseSearch') {
@@ -1252,45 +1467,49 @@
                     const q = $('#icdQ').value.trim();
                     if(q.length < 3) return;
                     const box = $('#icdRes');
-                    box.innerHTML = '<div class="empty-state">Buscando en CIE-11...</div>';
+                    box.innerHTML = `
+                        <div class="empty-state" style="margin-top:20px;">
+                            <div class="loader" style="font-size:1.5rem; margin-bottom:8px;">⏳</div>
+                            <strong>Buscando en la OMS...</strong>
+                        </div>`;
                     try {
                         const url = `https://nurseflow-api.carlosb-n.workers.dev/icd/search?q=${encodeURIComponent(q)}&includeKeywordMatches=true`;
                         const r = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+                        if (!r.ok) throw new Error('Error API');
                         const data = await r.json();
                         const items = data.destinationEntities || [];
                         
                         box.innerHTML = `<div class="list">${items.slice(0,15).map(x => {
-                            // Limpiamos los <em> que devuelve la OMS para la vista de lista
                             const title = x.title.replace(/<[^>]+>/g, '');
+                            const theCode = x.theCode || 'S/C';
                             return UIHelpers.listRow({
                                 title: title,
-                                sub: `Código: ${x.theCode || 'S/C'}`,
+                                sub: `Código CIE-11: ${theCode}`,
                                 icon: '🩺',
-                                action: `data-action="openSlide" data-view="diseaseDetail" data-id="${x.id}"`
+                                action: `data-action="openSlide" data-view="diseaseDetail" data-id="${x.id}|${theCode}"`
                             });
-                        }).join('') || UIHelpers.noData('Sin resultados')}</div>`;
+                        }).join('') || UIHelpers.noData('Sin resultados', 'Prueba con otro término médico.')}</div>`;
                     } catch(e) {
-                        box.innerHTML = UIHelpers.notice('Error conectando a la API.', false, true);
+                        box.innerHTML = UIHelpers.notice('Error conectando a la API de la OMS. Comprueba tu conexión a internet.', false, true);
                     }
                 };
                 
                 $('#icdBtn').onclick = doSearch;
                 $('#icdQ').onkeydown = e => { if(e.key === 'Enter') doSearch(); };
             }
-            
             if(view === 'diseaseDetail') {
                 $('#saveNursingNotes')?.addEventListener('click', async (e) => {
                     const id = e.target.dataset.id;
                     const notes = $('#nursingNotes').value;
-                    // Usamos la tabla 'pae' que ya tenías inicializada en tu BD
                     await NurseDB.put('pae', { id: id, notes: notes, updatedAt: new Date().toISOString() });
-                    UI.toast('Plan de cuidados guardado');
+                    UI.toast('Plan de Cuidados guardado ✓');
                 });
             }
-            if(view === 'exceptions') $('#exceptionForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Excepción guardada'); };
+            if(view === 'exceptions') {
+                $('#exceptionForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Excepción guardada'); };
+            }
             if(view === 'tasks') {
-                $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });
-                $('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
+                $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });$('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
             }
             if(view === 'caseForm') {
                 attachICDAutocomplete($('#caseDiagnosis'), $('#caseIcdCode'), $('#caseIcdValidated'), $('#icdStatus'), $('#icdAutocomplete'));
@@ -1299,16 +1518,16 @@
                     const f = new FormData(e.target);
                     const validated = f.get('icdValidated') === 'true';
                     if (f.get('diagnosis').trim() && f.get('icdCode') && !validated) {
-                        const ok = await UI.confirm('CIE-11 No verificado', 'El código introducido no está validado formalmente contra la base OMS. ¿Deseas guardar de todos modos?', 'Guardar así', true);
+                        const ok = await UI.confirm('CIE-11 No verificado', 'El diagnóstico introducido no se ha seleccionado de la lista validada de la OMS. ¿Deseas guardar de todos modos?', 'Guardar así', true);
                         if (!ok) return;
                     }
                     const procs = [...e.target.querySelectorAll('[data-proc-row]')].map(el => ({id: el.querySelector('[name="procId"]').value, name: el.querySelector('[name="procId"] option:checked')?.textContent||'', participation: el.querySelector('[name="participation"]').value})).filter(i => i.id);
                     await NurseDB.put('cases', {id: data||uid(), date: f.get('date'), area: f.get('area').trim(), diagnosis: f.get('diagnosis').trim(), icdCode: f.get('icdCode').trim(), icdValidated: validated, context: f.get('context').trim(), procedures: procs, meds: f.get('meds').split(',').map(i=>i.trim()).filter(Boolean), learning: f.get('learning').trim(), review: f.get('review').trim(), starred: f.get('starred')==='on', updatedAt: new Date().toISOString()});
-                    state.slideOverOpen = false; renderView(); UI.toast('Caso guardado');
+                    state.slideOverOpen = false; renderView(); UI.toast('Caso Clínico guardado ✓');
                 };
             }
             if(view === 'dayLog') {
-                $('#dayForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('days', {id: f.get('date'), date: f.get('date'), attendanceOfficial: f.get('attendance')==='on', learning: f.get('learning').trim(), mood: f.get('mood')}); state.slideOverOpen = false; renderView(); UI.toast('Día guardado'); };
+                $('#dayForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('days', {id: f.get('date'), date: f.get('date'), attendanceOfficial: f.get('attendance')==='on', learning: f.get('learning').trim(), mood: f.get('mood')}); state.slideOverOpen = false; renderView(); UI.toast('Turno registrado ✓'); };
             }
             if(view === 'medSearch') {
                 $('#cimaBtn').onclick = () => searchCIMA($('#cimaQ').value);
@@ -1325,7 +1544,7 @@
                                 try { const codes = await detector.detect(video); if(codes.length){ stream.getTracks().forEach(t=>t.stop()); $('#scanManual').value = codes[0].rawValue; $('#scanManualBtn').click(); return; } } catch(e){}
                                 requestAnimationFrame(loop);
                             }; requestAnimationFrame(loop);
-                        } catch(e) { UI.toast('No se pudo acceder a la cámara'); }
+                        } catch(e) { UI.toast('Cámara no accesible'); }
                     }; startNativeScan();
                 }
                 $('#scanManualBtn').onclick = () => {
@@ -1365,22 +1584,30 @@
             if(view === 'labs' || view === 'dictionary') {
                 $('#filterQ').oninput = e => { const q = e.target.value.toLowerCase(); [...$('#filterList').children].forEach(c => c.classList.toggle('hidden', !c.textContent.toLowerCase().includes(q))); };
             }
-            if(view === 'flashcards') $('#flashForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('flashcards', {id: uid(), q: f.get('q').trim(), a: f.get('a').trim(), topic: f.get('topic').trim(), due: getLocalISOToday(), ease: 2.5, interval: 0, reps: 0}); state.slideOverOpen = false; UI.toast('Flashcard añadida'); };
+            if(view === 'flashcards') {
+                $('#flashForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('flashcards', {id: uid(), q: f.get('q').trim(), a: f.get('a').trim(), topic: f.get('topic').trim(), due: getLocalISOToday(), ease: 2.5, interval: 0, reps: 0}); state.slideOverOpen = false; UI.toast('Flashcard añadida ✓'); };
+            }
             if(view === 'flashReview') {
                 const initFlash = async () => {
                     const cards = (await NurseDB.all('flashcards')).filter(c=>!c.due||c.due<=getLocalISOToday());
                     const g = $('#flashGame'); let idx = Number(g.dataset.idx);
-                    if(idx >= cards.length) { state.slideOverOpen = false; return UI.toast('Repaso completado. ¡Buen trabajo!'); }
+                    if(idx >= cards.length) { state.slideOverOpen = false; return UI.toast('¡Repaso completado por hoy! 🎉'); }
                     const c = cards[idx];
                     g.innerHTML = `
-                        <div class="card" style="min-height:200px; display:flex; flex-direction:column; justify-content:center; text-align:center;">
-                            <p class="muted small">${esc(c.topic)}</p><h2 style="font-size:1.5rem; margin-top:8px">${esc(c.q)}</h2>
-                            <div id="fAns" class="hidden"><div style="height:1px; background:var(--border-color); margin:16px 0;"></div><p>${esc(c.a)}</p></div>
+                        <div class="card" style="min-height:250px; display:flex; flex-direction:column; justify-content:center; text-align:center; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);">
+                            <span class="pill" style="align-self:center; margin-bottom:16px;">${esc(c.topic)}</span>
+                            <h2 style="font-size:1.6rem; margin-top:8px">${esc(c.q)}</h2>
+                            <div id="fAns" class="hidden">
+                                <hr style="border:0; border-top:1px dashed var(--border-color); margin:24px 0;">
+                                <p style="font-size:1.1rem; color:var(--primary); font-weight:500;">${esc(c.a)}</p>
+                            </div>
                         </div>
-                        <button class="btn primary block" id="fShow">Mostrar Respuesta</button>
-                        <div id="fRate" class="grid-2 hidden" style="margin-top:16px"><button class="btn" data-r="again">Otra vez</button><button class="btn primary" data-r="good">Bien</button></div>`;
-                    $('#fShow').onclick = () => { $('#fAns').classList.remove('hidden'); $('#fRate').classList.remove('hidden'); $('#fShow').classList.add('hidden'); };
-                    $$('[data-r]').forEach(b => b.onclick = async () => {
+                        <button class="btn hero-btn block" id="fShow" style="margin-top:24px; border:2px solid var(--primary);">Revelar Respuesta</button>
+                        <div id="fRate" class="grid-2 hidden" style="margin-top:24px">
+                            <button class="btn danger" data-r="again">No me la sabía</button>
+                            <button class="btn success" data-r="good" style="background:var(--success); color:white;">Bien, la sabía</button>
+                        </div>`;
+                    $('#fShow').onclick = () => { $('#fAns').classList.remove('hidden'); $('#fRate').classList.remove('hidden'); $('#fShow').classList.add('hidden'); };                     $$('[data-r]').forEach(b => b.onclick = async () => {
                         const r = b.dataset.r; c.reps++; 
                         if(r==='again') { c.interval = 0; c.due = getLocalISOToday(); }
                         if(r==='good') { c.interval = Math.max(1, Math.round((c.interval||1)*1.8)); const d = new Date(); d.setDate(d.getDate()+c.interval); c.due = d.toISOString().slice(0,10); }
@@ -1391,51 +1618,70 @@
             if(view === 'quiz') {
                 const initQuiz = async () => {
                     const qs = await NurseDB.all('quiz'); const g = $('#quizGame'); let idx = Number(g.dataset.idx); let score = Number(g.dataset.score);
-                    if(idx >= qs.length) { g.innerHTML = `<div class="score-big"><b>${score}/${qs.length}</b><span>Aciertos</span></div>`; return; }
+                    if(idx >= qs.length) { g.innerHTML = `<div class="card score-big"><b>${score}/${qs.length}</b><span style="font-size:1.2rem; margin-top:8px;">Aciertos Totales</span><button class="btn primary block" style="margin-top:24px;" onclick="document.querySelector('[data-action=closeSlideOver]').click()">Finalizar</button></div>`; return; }
                     const q = qs[idx];
-                    g.innerHTML = `<span class="pill">${esc(q.topic)}</span><h3 style="margin:16px 0">${esc(q.q)}</h3><div class="list">${q.o.map((o,i)=>`<button class="btn" style="justify-content:flex-start" data-o="${i}">${esc(o)}</button>`).join('')}</div><div id="qExp" style="margin-top:16px"></div>`;
-                    $$('[data-o]').forEach(b => b.onclick = () => {
-                        $$('[data-o]').forEach((x,i) => { x.disabled=true; if(i===q.a) { x.style.background='var(--success)'; x.style.color='white'; } else if(i===Number(b.dataset.o)) { x.style.background='var(--danger)'; x.style.color='white'; } });
+                    g.innerHTML = `
+                        <div class="card" style="margin-bottom:24px;">
+                            <span class="pill" style="margin-bottom:12px;">Pregunta ${idx+1} de ${qs.length}</span>
+                            <h3 style="font-size:1.2rem; line-height:1.4;">${esc(q.q)}</h3>
+                        </div>
+                        <div class="list">${q.o.map((o,i)=>`<button class="btn" style="justify-content:flex-start; text-align:left; height:auto; min-height:48px; padding:12px;" data-o="${i}">${esc(o)}</button>`).join('')}</div>
+                        <div id="qExp" style="margin-top:24px"></div>`;
+                    $$('[data-o]').forEach(b => b.onclick = () => {$$
+('[data-o]').forEach((x,i) => { x.disabled=true; if(i===q.a) { x.style.background='var(--success)'; x.style.color='white'; } else if(i===Number(b.dataset.o)) { x.style.background='var(--danger)'; x.style.color='white'; } });
                         if(Number(b.dataset.o)===q.a) score++; g.dataset.score = score;
-                        $('#qExp').innerHTML = `${UIHelpers.notice(esc(q.e), true)}<button class="btn primary block" id="qNext">Siguiente</button>`;
+                        $('#qExp').innerHTML = `${UIHelpers.notice('Explicación: ' + esc(q.e), true)}<button class="btn primary block" id="qNext" style="margin-top:16px;">Siguiente Pregunta</button>`;
                         $('#qNext').onclick = () => { g.dataset.idx = idx + 1; initQuiz(); };
                     });
                 }; initQuiz();
             }
-            if(view === 'settingsProfile') $('#profForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); state.settings.profileName = f.get('name').trim(); state.settings.university = f.get('uni'); state.settings.courseNumber = f.get('course'); state.settings.course = `${f.get('course')}º Enfermería`; await saveSettings(); state.slideOverOpen = false; UI.toast('Perfil guardado'); };
-            if(view === 'settingsPracticum') { $('#hasPracToggle').onchange = e => $('#pracFields').classList.toggle('hidden', !e.target.checked); $('#pracForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); const has = $('#hasPracToggle').checked; Object.assign(state.settings, {hasPracticum: has, practicum: has?f.get('practicum'):'', hospital: has?f.get('hospital'):'', service: has?f.get('service'):'', periodStart: has?f.get('start'):'', periodEnd: has?f.get('end'):''}); await saveSettings(); state.slideOverOpen = false; UI.toast('Prácticas actualizadas'); }; }
-            if(view === 'settingsTheme') $('#saveTheme').onclick = async () => { state.settings.theme = $('#themeSel').value; state.settings.showClinicalWarnings = $('#warnSel').checked; await saveSettings(); document.documentElement.setAttribute('data-theme', state.settings.theme); state.slideOverOpen = false; };
-            if(view === 'settingsPrivacy') $('#savePriv').onclick = async () => {
-                const en = $('#lockTog').checked, met = $('#lockMet').value, p = $('#newPin').value.trim();
-                if(en && met==='pin' && !state.settings.pinHash && !/^\d{6,8}$/.test(p)) return UI.toast('Configura un PIN de 6 a 8 dígitos');
-                if(p) { if(!/^\d{6,8}$/.test(p)) return UI.toast('PIN inválido (mínimo 6 cifras)'); state.settings.pinHash = await hashText(p); }
-                if(en && met==='webauthn') {
-                    try { const cred = await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rp:{name:'NurseFlow'},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'nf',displayName:'NF'},pubKeyCredParams:[{alg:-7,type:'public-key'},{alg:-257,type:'public-key'}],authenticatorSelection:{userVerification:'required'},timeout:60000,attestation:'none'}}); state.settings.credentialId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId))); }
-                    catch(e) { return UI.toast('Biometría falló o cancelada'); }
-                }
-                state.settings.lockEnabled = en; state.settings.lockMethod = met; state.settings.autoLock = Number($('#autoL').value); await saveSettings(); state.slideOverOpen = false; UI.toast('Privacidad guardada');
-            };
+            if(view === 'settingsProfile') {
+                $('#profForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); state.settings.profileName = f.get('name').trim(); state.settings.university = f.get('uni'); state.settings.courseNumber = f.get('course'); state.settings.course = `${f.get('course')}º Enfermería`; await saveSettings(); state.slideOverOpen = false; UI.toast('Perfil guardado ✓'); };
+            }
+            if(view === 'settingsPracticum') { 
+                $('#hasPracToggle').onchange = e => $('#pracFields').classList.toggle('hidden', !e.target.checked); 
+                $('#pracForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); const has = $('#hasPracToggle').checked; Object.assign(state.settings, {hasPracticum: has, practicum: has?f.get('practicum'):'', hospital: has?f.get('hospital'):'', service: has?f.get('service'):'', periodStart: has?f.get('start'):'', periodEnd: has?f.get('end'):''}); await saveSettings(); state.slideOverOpen = false; UI.toast('Prácticas actualizadas ✓'); }; 
+            }
+            if(view === 'settingsTheme') {
+                $('#saveTheme').onclick = async () => { state.settings.theme = $('#themeSel').value; state.settings.showClinicalWarnings = $('#warnSel').checked; await saveSettings(); document.documentElement.setAttribute('data-theme', state.settings.theme); state.slideOverOpen = false; UI.toast('Apariencia actualizada'); };
+            }
+            if(view === 'settingsPrivacy') {
+                $('#savePriv').onclick = async () => {
+                    const en = $('#lockTog').checked, met = $('#lockMet').value, p = $('#newPin').value.trim();
+                    if(en && met==='pin' && !state.settings.pinHash && !/^\d{6,8}$/.test(p)) return UI.toast('Configura un PIN numérico de 6 a 8 dígitos');
+                    if(p) { if(!/^\d{6,8}$/.test(p)) return UI.toast('PIN inválido (mínimo 6 cifras)'); state.settings.pinHash = await hashText(p); }
+                    if(en && met==='webauthn') {
+                        try { const cred = await navigator.credentials.create({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)),rp:{name:'NurseFlow'},user:{id:crypto.getRandomValues(new Uint8Array(16)),name:'nf',displayName:'NF'},pubKeyCredParams:[{alg:-7,type:'public-key'},{alg:-257,type:'public-key'}],authenticatorSelection:{userVerification:'required'},timeout:60000,attestation:'none'}}); state.settings.credentialId = btoa(String.fromCharCode(...new Uint8Array(cred.rawId))); }
+                        catch(e) { return UI.toast('Configuración biométrica cancelada'); }
+                    }
+                    state.settings.lockEnabled = en; state.settings.lockMethod = met; state.settings.autoLock = Number($('#autoL').value); await saveSettings(); state.slideOverOpen = false; UI.toast('Seguridad actualizada 🔒');
+                };
+            }
             if(view === 'settingsData') {
                 $('#exportModalBtn').onclick = async () => {
-                    const ok = await UI.confirm('Exportar Datos', 'Elige qué deseas exportar:\n- Aceptar: Exportar TODO\n- Cancelar: Exportar solo Portfolio clínico', 'Todo', false);
+                    const ok = await UI.confirm('Exportar Datos', 'Elige qué deseas exportar:\n- Aceptar: Exportar TODO\n- Cancelar: Exportar solo Portfolio clínico', 'Exportar Todo', false);
                     const storesToExport = ok ? ['settings', 'cases', 'tasks', 'days', 'schedule', 'exceptions', 'pae', 'meds', 'procedures', 'quiz', 'flashcards'] : ['cases', 'days', 'procedures', 'meds'];
                     const data = await NurseDB.exportAll(storesToExport);
                     const url = URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
                     const a = document.createElement('a'); a.href = url; a.download = `nurseflow-export-${getLocalISOToday()}.json`; a.click();
-                    UI.toast('Exportado con éxito');
+                    UI.toast('Archivo descargado con éxito');
                 };
                 $('#importBtn').onclick = () => $('#fileImport').click();
-                $('#wipeBtn').onclick = async () => { if(await UI.confirm('Peligro', '¿Borrar TODOS los datos locales permanentemente?', 'Borrar', true)) { await NurseDB.reset(); location.reload(); } };
+                $('#wipeBtn').onclick = async () => { if(await UI.confirm('Peligro Irreversible', '¿Borrar TODOS los datos locales permanentemente? Esto no se puede deshacer.', 'Sí, Borrar Todo', true)) { await NurseDB.reset(); location.reload(); } };
             }
             if(view === 'globalSearch') {
                 $('#gSearchQ').oninput = async e => {
-                    const q = e.target.value.toLowerCase(); if(q.length<2) return $('#gSearchRes').innerHTML = '';
+                    const q = e.target.value.toLowerCase(); 
+                    if(q.length<2) {
+                        $('#gSearchRes').innerHTML = '<div class="empty-state small">Escribe para buscar en toda la base de datos local</div>';
+                        return;
+                    }
                     const [cases, procs, meds] = await Promise.all([NurseDB.all('cases'), NurseDB.all('procedures'), NurseDB.all('meds')]);
                     let out = [];
                     cases.filter(x=>x.diagnosis.toLowerCase().includes(q)).slice(0,3).forEach(x=>out.push(UIHelpers.listRow({title:x.diagnosis, sub:'Caso Clínico', icon:'C', action:`data-action="openSlide" data-view="caseDetail" data-id="${x.id}"`})));
-                    procs.filter(x=>x.name.toLowerCase().includes(q)).slice(0,3).forEach(x=>out.push(UIHelpers.listRow({title:x.name, sub:'Técnica', icon:'P', action:`data-action="openSlide" data-view="procDetail" data-id="${x.id}"`})));
-                    meds.filter(x=>x.name.toLowerCase().includes(q)).slice(0,3).forEach(x=>out.push(UIHelpers.listRow({title:x.name, sub:'Botiquín', icon:'Rx', action:`data-action="openSlide" data-view="medLocalDetail" data-id="${x.id}"`})));
-                    $('#gSearchRes').innerHTML = out.join('') || UIHelpers.noData('Sin resultados locales');
+                    procs.filter(x=>x.name.toLowerCase().includes(q)).slice(0,3).forEach(x=>out.push(UIHelpers.listRow({title:x.name, sub:'Guía Técnica', icon:'P', action:`data-action="openSlide" data-view="procDetail" data-id="${x.id}"`})));
+                    meds.filter(x=>x.name.toLowerCase().includes(q)).slice(0,3).forEach(x=>out.push(UIHelpers.listRow({title:x.name, sub:'Botiquín Offline', icon:'Rx', action:`data-action="openSlide" data-view="medLocalDetail" data-id="${x.id}"`})));
+                    $('#gSearchRes').innerHTML = out.join('') || UIHelpers.noData('Sin resultados', 'No se ha encontrado en tus datos locales.');
                 };
             }
         }
