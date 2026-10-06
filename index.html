@@ -1012,24 +1012,45 @@
                         <div class="form-row"><input class="field" id="cimaQ" placeholder="Ej. Furosemida" style="margin:0"><button class="btn primary" id="cimaBtn">Buscar en CIMA</button></div>
                         <div id="cimaRes" style="margin-top:16px">${UIHelpers.noData('CIMA AEMPS', 'Busca por principio activo o marca.')}</div>`;
                 }
-                else if (view === 'diseaseSearch') {
-                    html = `
-                        ${UIHelpers.notice('Conectado a la base de datos oficial CIE-11 de la OMS.', true)}
-                        <div class="form-row" style="display:flex; gap:8px;">
-                            <input class="field" id="icdQ" placeholder="Ej. Insuficiencia cardíaca..." style="margin:0; flex:1;">
-                            <button class="btn primary" id="icdBtn" style="min-width:80px;">Buscar</button>
-                        </div>
-                        <div id="icdRes" style="margin-top:16px">
-                            ${UIHelpers.noData('Guía de Patologías', 'Busca cualquier enfermedad, síndrome o trastorno.')}
-                        </div>`;
-                }
+                if(view === 'diseaseSearch') {
+                const doSearch = async () => {
+                    const q = $('#icdQ').value.trim();
+                    if(q.length < 3) return;
+                    const box = $('#icdRes');
+                    box.innerHTML = '<div class="empty-state">Buscando en CIE-11...</div>';
+                    try {
+                        const url = `https://nurseflow-api.carlosb-n.workers.dev/icd/search?q=${encodeURIComponent(q)}&includeKeywordMatches=true`;
+                        const r = await fetch(url, { headers: { 'Accept-Language': 'es' } });
+                        const data = await r.json();
+                        const items = data.destinationEntities || [];
+                        
+                        box.innerHTML = `<div class="list">${items.slice(0,15).map(x => {
+                            const title = x.title.replace(/<[^>]+>/g, '');
+                            const theCode = x.theCode || 'S/C';
+                            return UIHelpers.listRow({
+                                title: title,
+                                sub: `Código: ${theCode}`,
+                                icon: '🩺',
+                                // AQUÍ inyectamos el id y el código juntos
+                                action: `data-action="openSlide" data-view="diseaseDetail" data-id="${x.id}\vert{}${theCode}"`
+                            });
+                        }).join('') || UIHelpers.noData('Sin resultados')}</div>`;
+                    } catch(e) {
+                        box.innerHTML = UIHelpers.notice('Error conectando a la API.', false, true);
+                    }
+                };
+                
+                $('#icdBtn').onclick = doSearch;
+                $('#icdQ').onkeydown = e => { if(e.key === 'Enter') doSearch(); };
+            }
                 else if (view === 'diseaseDetail') {
-                    // Extraemos el ID final de la URL de la OMS
-                    const entityId = String(data).split('/').pop(); 
+                    // Extraemos el ID y el código que pasamos desde la lista (separados por |)
+                    const [fullId, passedCode] = String(data).split('|');
+                    const entityId = fullId.split('/').pop(); 
+                    
                     html = `<div class="empty-state">Descargando datos clínicos de la OMS...</div>`;
                     
                     try {
-                        
                         const workerUrl = `https://nurseflow-api.carlosb-n.workers.dev/icd/entity/${entityId}`;
                         const r = await fetch(workerUrl, { headers: { 'Accept-Language': 'es' } });
                         if (!r.ok) throw new Error('No encontrado');
@@ -1040,16 +1061,17 @@
                         const synonyms = (d.synonym || []).map(s => s.label?.['@value']).filter(Boolean);
                         const exclusions = (d.exclusion || []).map(e => e.label?.['@value']).filter(Boolean);
                         
-                        // Buscamos si la enfermera ya había guardado notas para esta enfermedad
                         const localNote = await NurseDB.get('pae', entityId) || { notes: '' };
-                        
                         const block = (t, txt) => txt ? `<div class="clinical-section"><h3>${t}</h3><p>${esc(txt)}</p></div>` : '';
                         
+                        // Usamos el código de la lista (passedCode) si la entidad base no lo trae
+                        const displayCode = passedCode || d.code || 'S/C';
+
                         html = `
                             <div class="card">
                                 <div class="sub muted">CIE-11 Base OMS</div>
                                 <h3 style="font-size:1.3rem; margin-top:4px; margin-bottom:8px;">${esc(title)}</h3>
-                                <span class="pill primary">${esc(d.code || 'Sin código')}</span>
+                                <span class="pill primary">CIE-11: ${esc(displayCode)}</span>
                             </div>
                             
                             ${block('Definición Médica', definition)}
