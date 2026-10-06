@@ -945,6 +945,32 @@
                         ${c.review ? `<h4>Dudas</h4><p class="card">${esc(c.review)}</p>` : ''}
                         ${!state.readOnlyMode ? `<button class="btn primary block" data-action="openSlide" data-view="caseForm" data-id="${c.id}">Editar Caso</button>` : ''}`;
                 }
+                else if (view === 'procDetail') {
+                    const p = await NurseDB.get('procedures', data); 
+                    if(!p) return;
+                    
+                    html = `
+                        <div class="card">
+                            <div class="sub muted">Guía de Técnica</div>
+                            <h3 style="font-size:1.3rem; margin-top:4px; margin-bottom:8px;">${esc(p.name)}</h3>${p.favorite ? '<span class="pill warning">★ Favorito</span>' : ''}
+                        </div>
+                        
+                        <h4>Material Necesario</h4>
+                        <div class="card">
+                            <ul style="padding-left: 20px; color: var(--text-main);">
+                                ${(p.materials||[]).map(m => `<li style="margin-bottom: 8px;">${esc(m)}</li>`).join('')}
+                            </ul>
+                        </div>
+                        
+                        <h4>Consideraciones y Técnica</h4>
+                        <div class="card" style="border-left: 4px solid var(--primary);">
+                            <ul style="padding-left: 20px; color: var(--text-main);">
+                                ${(p.notes||[]).map(n => `<li style="margin-bottom: 8px;">${esc(n)}</li>`).join('')}
+                            </ul>
+                        </div>
+                        ${UIHelpers.clinicalWarning()}
+                    `;
+                }
                 else if (view === 'dayLog') {
                     const date = getLocalISOToday(), row = await NurseDB.get('days', date);
                     html = `
