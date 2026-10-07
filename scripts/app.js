@@ -17,6 +17,7 @@
             return [...new Uint8Array(h)].map(x => x.toString(16).padStart(2, '0')).join('');
         };
 
+        // Datos de usuario en IndexedDB: las actualizaciones de esquema deben conservar los almacenes existentes.
         const NurseDB = (() => {
             const DB_NAME = 'NurseFlowDB';
             const DB_VERSION = 1;
@@ -28,9 +29,17 @@
                 const req = indexedDB.open(DB_NAME, DB_VERSION);
                 req.onupgradeneeded = e => {
                     const db = e.target.result;
-                    STORES.forEach(store => { if (!db.objectStoreNames.contains(store)) db.createObjectStore(store, { keyPath: 'id' }); });
+
+                    STORES.forEach(store => {
+                        if (!db.objectStoreNames.contains(store)) {
+                            db.createObjectStore(store, { keyPath: 'id' });
+                        }
+                    });
                 };
-                req.onsuccess = e => { dbInstance = e.target.result; resolve(dbInstance); };
+                req.onsuccess = e => {
+                    dbInstance = e.target.result;
+                    resolve(dbInstance);
+                };
                 req.onerror = e => reject(e.target.error);
             });
 
@@ -47,31 +56,60 @@
             };
 
             return {
-                get: (store, id) => tx(store, 'readonly', s => { const r = s.get(id); return new Promise(res => r.onsuccess = () => res(r.result)); }),
-                all: (store) => tx(store, 'readonly', s => { const r = s.getAll(); return new Promise(res => r.onsuccess = () => res(r.result)); }),
-                put: (store, data) => tx(store, 'readwrite', s => s.put(data)),
-                bulkPut: (store, items) => tx(store, 'readwrite', s => items.forEach(i => s.put(i))),
-                remove: (store, id) => tx(store, 'readwrite', s => s.delete(id)),
-                clear: (store) => tx(store, 'readwrite', s => s.clear()),
-                reset: async () => { for (const s of STORES) await NurseDB.clear(s); },
+                get: (store, id) => tx(store, 'readonly', objectStore => {
+                    const request = objectStore.get(id);
+                    return new Promise(resolve => {
+                        request.onsuccess = () => resolve(request.result);
+                    });
+                }),
+                all: store => tx(store, 'readonly', objectStore => {
+                    const request = objectStore.getAll();
+                    return new Promise(resolve => {
+                        request.onsuccess = () => resolve(request.result);
+                    });
+                }),
+                put: (store, data) => tx(store, 'readwrite', objectStore =>
+                    objectStore.put(data)
+                ),
+                bulkPut: (store, items) => tx(store, 'readwrite', objectStore => {
+                    items.forEach(item => objectStore.put(item));
+                }),
+                remove: (store, id) => tx(store, 'readwrite', objectStore =>
+                    objectStore.delete(id)
+                ),
+                clear: store => tx(store, 'readwrite', objectStore =>
+                    objectStore.clear()
+                ),
+                reset: async () => {
+                    for (const store of STORES) {
+                        await NurseDB.clear(store);
+                    }
+                },
                 exportAll: async (storesList = STORES) => {
                     const data = {};
-                    for (const s of storesList) {
-                        if (STORES.includes(s)) data[s] = await NurseDB.all(s);
+                    for (const store of storesList) {
+                        if (STORES.includes(store)) {
+                            data[store] = await NurseDB.all(store);
+                        }
                     }
                     return data;
                 },
                 importAll: async (data) => {
                     const sourceData = data.stores ? data.stores : data;
-                    for (const s of STORES) {
-                        if (sourceData[s] && Array.isArray(sourceData[s])) {
-                            await NurseDB.clear(s);
-                            await NurseDB.bulkPut(s, sourceData[s]);
+                    for (const store of STORES) {
+                        if (Array.isArray(sourceData[store])) {
+                            await NurseDB.clear(store);
+                            await NurseDB.bulkPut(store, sourceData[store]);
                         }
                     }
                 }
             };
         })();
+
+        // Solicitud opcional del navegador: un rechazo no impide usar IndexedDB.
+        if (navigator.storage?.persist) {
+            navigator.storage.persist().catch(() => {});
+        }
 
         const NURSE_DATA = {
             procedures: [
@@ -2619,14 +2657,19 @@
                 });
             }
             if(view === 'exceptions') {
-                // Guardado manual
-                $('#exceptionForm').onsubmit = async e => { 
-                    e.preventDefault(); 
-                    const f = new FormData(e.target); 
-                    await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); 
-                    state.slideOverOpen = false; 
-                    renderView(); 
-                    UI.toast('Excepción guardada'); 
+                // Las excepciones manuales comparten almacén con los festivos sincronizados.
+                $('#exceptionForm').onsubmit = async event => {
+                    event.preventDefault();
+                    const formData = new FormData(event.target);
+                    await NurseDB.put('exceptions', {
+                        id: uid(),
+                        date: formData.get('date'),
+                        type: formData.get('type'),
+                        title: formData.get('title').trim()
+                    });
+                    state.slideOverOpen = false;
+                    renderView();
+                    UI.toast('Excepción guardada');
                 };
 
                 const syncFestivos = async (automatic = false) => {
@@ -2642,6 +2685,7 @@
                         const years = [currentYear, currentYear + 1];
                         const eventsByDate = new Map();
 
+                        // El calendario incluido permite sincronizar 2026 incluso sin conexión.
                         if (years.includes(2026)) {
                             try {
                                 const fallbackResponse = await fetch('./assets/festivos-valencia-2026.json');
@@ -2659,6 +2703,7 @@
                                 );
                                 if (!response.ok) return { available: false, events: [] };
 
+                            // La API entrega festivos nacionales y autonómicos; se filtra la Comunitat Valenciana.
                                 const holidays = await response.json();
                                 if (!Array.isArray(holidays)) return { available: false, events: [] };
 
@@ -2676,6 +2721,7 @@
                             }
                         }));
 
+                        // Los datos remotos prevalecen sobre el respaldo local si coinciden en fecha.
                         calendars.flatMap(calendar => calendar.events).forEach(event => {
                             eventsByDate.set(event.date, event);
                         });
@@ -2692,6 +2738,7 @@
                         let addedCount = 0;
                         let updatedCount = 0;
 
+                        // No se reactivan festivos que la persona haya anulado expresamente.
                         for (const event of events) {
                             const saved = holidaysByDate.get(event.date);
                             if (saved) {
@@ -2711,6 +2758,7 @@
                             addedCount++;
                         }
 
+                        // Si falta algún año en la API, se vuelve a intentar antes.
                         const retryAfterMs = calendars.every(calendar => calendar.available)
                             ? 30 * 24 * 60 * 60 * 1000
                             : 7 * 24 * 60 * 60 * 1000;
@@ -2745,6 +2793,7 @@
                     lastSync = JSON.parse(localStorage.getItem('nurseflow-holiday-sync') || 'null');
                 } catch {}
                 const retryAfterMs = lastSync?.retryAfterMs || 0;
+                // La sincronización se ejecuta al abrir esta vista; la PWA no depende de tareas en segundo plano.
                 if (navigator.onLine && (!lastSync?.syncedAt || Date.now() - lastSync.syncedAt >= retryAfterMs)) {
                     syncFestivos(true);
                 }

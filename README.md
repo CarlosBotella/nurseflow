@@ -9,6 +9,8 @@ PWA local para organización académica, prácticas y consulta de enfermería. H
 3. Abre la web con conexión, espera a que cargue y cierra y vuelve a abrir la PWA. Si hay otra ventana de la versión anterior, ciérrala también.
 4. No borres los datos del sitio para actualizar. Puedes exportar una copia desde Ajustes → Base de datos antes de sustituir archivos.
 
+Las versiones de la app se actualizan sin importar backups: los datos permanecen en IndexedDB mientras se publique bajo el mismo origen (dominio, protocolo y puerto). La app solicita al navegador almacenamiento persistente cuando está disponible para reducir purgas automáticas por falta de espacio. Un backup sigue siendo necesario si se borran manualmente los datos del sitio, se cambia de origen/dispositivo o se pierde el dispositivo; esta solicitud no puede impedir esas situaciones.
+
 Para probar en un ordenador: ejecuta `python3 -m http.server 8000` dentro de esta carpeta y abre `http://localhost:8000`. Usa HTTPS al publicarla. Abrir el HTML con doble clic no permite verificar correctamente el service worker.
 
 ## Qué incluye esta versión
