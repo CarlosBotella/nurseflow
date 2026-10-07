@@ -682,40 +682,44 @@
                     if (!record || !record.handle) return;
                     
                     const handle = record.handle;
-                    // Verificamos si tenemos permiso para escribir en ese archivo
-                    let perm = await handle.queryPermission({ mode: 'readwrite' });
+                    let perm = 'granted';
                     
-                    if (perm !== 'granted') {
-                        if (interactive) {
-                            // Si el usuario acaba de tocar el botón, el navegador nos permite pedir el permiso
-                            perm = await handle.requestPermission({ mode: 'readwrite' });
-                        } else {
-                            // Si acaba de abrir la app, el navegador NO nos deja pedir permiso sin un "clic" previo.
-                            // Lanzamos una notificación para que el usuario haga clic.
-                            const t = $('#toast');
-                            $('#toastIcon').textContent = '💾';
-                            $('#toastMsg').textContent = 'Toca aquí para actualizar la copia de seguridad auto.';
-                            t.className = 'toast show'; 
-                            t.classList.add('toast--action'); t.setAttribute('role','button'); t.tabIndex=0;
-                            
-                            t.onclick = async () => {
-                                t.classList.remove('show');
-                                t.onclick = null;
-                                t.classList.remove('toast--action'); t.setAttribute('role','status'); t.removeAttribute('tabindex');
-                                await this.run(true); // Ahora sí tenemos el "clic"
-                            };
-                            
-                            clearTimeout(UI.toast.t);
-                            UI.toast.t = setTimeout(() => { 
-                                t.classList.remove('show'); 
-                                t.onclick = null; 
-                                t.classList.remove('toast--action'); t.setAttribute('role','status'); t.removeAttribute('tabindex');
-                            }, 8000);
-                            return;
+                    // Comprobar si la API soporta queryPermission para evitar el TypeError
+                    if (typeof handle.queryPermission === 'function') {
+                        perm = await handle.queryPermission({ mode: 'readwrite' });
+                        
+                        if (perm !== 'granted') {
+                            if (interactive) {
+                                if (typeof handle.requestPermission === 'function') {
+                                    perm = await handle.requestPermission({ mode: 'readwrite' });
+                                } else {
+                                    perm = 'granted'; // Fallback
+                                }
+                            } else {
+                                const t = $('#toast');
+                                $('#toastIcon').textContent = '💾';
+                                $('#toastMsg').textContent = 'Toca aquí para actualizar la copia de seguridad auto.';
+                                t.className = 'toast show'; 
+                                t.classList.add('toast--action'); t.setAttribute('role','button'); t.tabIndex=0;
+                                
+                                t.onclick = async () => {
+                                    t.classList.remove('show');
+                                    t.onclick = null;
+                                    t.classList.remove('toast--action'); t.setAttribute('role','status'); t.removeAttribute('tabindex');
+                                    await this.run(true); 
+                                };
+                                
+                                clearTimeout(UI.toast.t);
+                                UI.toast.t = setTimeout(() => { 
+                                    t.classList.remove('show'); 
+                                    t.onclick = null; 
+                                    t.classList.remove('toast--action'); t.setAttribute('role','status'); t.removeAttribute('tabindex');
+                                }, 8000);
+                                return;
+                            }
                         }
                     }
                     
-                    // Si llegamos aquí, tenemos permiso total para reescribir el mismo archivo en silencio
                     if (perm === 'granted') {
                         const data = await NurseDB.exportAll();
                         const writable = await handle.createWritable();
@@ -725,6 +729,9 @@
                     }
                 } catch (e) {
                     console.error('AutoBackup error:', e);
+                    if (interactive && e.name === 'NotAllowedError') {
+                        UI.toast('Permiso denegado para escribir en el archivo', 'error');
+                    }
                 }
             }
         };
@@ -1918,27 +1925,90 @@
                             </div>
                         </form>`;
                 }
-                else if (view === 'exceptions') {
-                    const rows = (await NurseDB.all('exceptions')).sort((a,b)=>a.date.localeCompare(b.date));
-                    html = `
-                        ${UIHelpers.notice('Registra festivos, semanas de exámenes o días sin clase.', true)}
-                        
-                        <button class="btn block mb-4 bg-bg-hover text-primary border-1px-solid-primary" id="syncFestivosBtn">
-                            <span class="text-section mr-2">📅</span> Sincronizar Festivos (Com. Valenciana)
-                        </button>
+                if(view === 'exceptions') {
+                // Guardado manual
+                $('#exceptionForm').onsubmit = async e => { 
+                    e.preventDefault(); 
+                    const f = new FormData(e.target); 
+                    await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); 
+                    state.slideOverOpen = false; 
+                    renderView(); 
+                    UI.toast('Excepción guardada'); 
+                };
 
-                        <form id="exceptionForm" class="card">
-                            <div class="form-row">
-                                <div class="form-field"><label>Fecha</label><input class="field" type="date" name="date" value="${state.calendarSelectedDate}" required></div>
-                                <div class="form-field"><label>Tipo</label><select class="field" name="type"><option>Festivo</option><option>Examen</option><option>Otro</option></select></div>
-                            </div>
-                            <label>Descripción</label>
-                            <input class="field" name="title" required placeholder="Ej. Fiesta local o Examen Farma">
-                            <button class="btn primary block mt-2">Añadir Fecha</button>
-                        </form>
-                        <h4 class="m-24px-0-8px">Próximas excepciones</h4>
-                        <div class="list" id="exceptionList">${rows.map(x=>UIHelpers.listRow({title: `${dateFmt(x.date)} ·${x.title}`, sub: x.type, icon: '!', action: `data-action="deleteEx" data-id="${x.id}"`})).join('') || UIHelpers.noData('Calendario despejado', 'No hay excepciones registradas.')}</div>`;
-                }
+                // Sincronización Automática con nuevo Proxy
+                $('#syncFestivosBtn').onclick = async () => {
+                    const btn = $('#syncFestivosBtn');
+                    btn.disabled = true;
+                    btn.innerHTML = 'Descargando calendario... ⏳';
+                    
+                    try {
+                        const url = 'https://calendariosnacionales.com/es/2026/festivos/val/index.ics';
+                        // Nuevo proxy CORS más estable
+                        const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+                        
+                        const response = await fetch(proxyUrl);
+                        if (!response.ok) throw new Error('No se pudo acceder al servidor de calendarios');
+                        
+                        const text = await response.text();
+                        const lines = text.split(/\r?\n/);
+                        let inEvent = false, currentEvent = {}, events = [];
+                        
+                        // Procesador del archivo .ics
+                        for (const line of lines) {
+                            if (line.startsWith('BEGIN:VEVENT')) { 
+                                inEvent = true; currentEvent = {}; 
+                            }
+                            else if (line.startsWith('END:VEVENT')) { 
+                                inEvent = false; 
+                                if (currentEvent.date && currentEvent.title) events.push(currentEvent); 
+                            }
+                            else if (inEvent) {
+                                if (line.startsWith('DTSTART')) {
+                                    const parts = line.split(':');
+                                    if (parts.length > 1) {
+                                        const dateStr = parts[1].trim().substring(0, 8);
+                                        if (dateStr.length === 8) {
+                                            currentEvent.date = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
+                                        }
+                                    }
+                                } 
+                                else if (line.startsWith('SUMMARY')) {
+                                    const parts = line.split(':');
+                                    if (parts.length > 1) currentEvent.title = parts.slice(1).join(':').trim();
+                                }
+                            }
+                        }
+                        
+                        if(events.length === 0) throw new Error('El archivo del calendario estaba vacío.');
+
+                        const existing = await NurseDB.all('exceptions');
+                        const existingDates = new Set(existing.map(e => e.date));
+                        let addedCount = 0;
+
+                        for (const ev of events) {
+                            if (!existingDates.has(ev.date)) {
+                                await NurseDB.put('exceptions', { 
+                                    id: uid(), 
+                                    date: ev.date, 
+                                    type: 'Festivo', 
+                                    title: ev.title 
+                                });
+                                addedCount++;
+                            }
+                        }
+                        
+                        UI.toast(`¡Éxito! ${addedCount} festivos nuevos sincronizados.`);
+                        renderView();
+                        renderSlideOverContent('exceptions');
+                        
+                    } catch (error) {
+                        UI.alert('Error de sincronización', 'No se pudieron descargar los festivos: ' + error.message);
+                        btn.disabled = false;
+                        btn.innerHTML = '<span class="text-section mr-2">📅</span> Sincronizar Festivos (Com. Valenciana)';
+                    }
+                };
+            }
                 else if (view === 'tasks') {
                     const rows = (await NurseDB.all('tasks')).sort((a,b)=>(a.done-b.done) || ((a.due||'9999').localeCompare(b.due||'9999')));
                     html = `
