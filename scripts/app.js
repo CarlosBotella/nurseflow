@@ -662,7 +662,7 @@
 
         const AutoBackup = {
             async setup() {
-                if (!('showSaveFilePicker' in window)) return UI.alert('No compatible', 'Tu dispositivo (ej. iPhone/Safari) no soporta el autoguardado en segundo plano. Sigue usando la Exportación Manual.');
+                if (!('showSaveFilePicker' in window)) return UI.alert('No compatible', 'Tu dispositivo no soporta el autoguardado en segundo plano. Sigue usando la Exportación Manual.');
                 try {
                     const handle = await window.showSaveFilePicker({
                         suggestedName: 'nurseflow-backup-auto.json',
@@ -684,43 +684,41 @@
                     const handle = record.handle;
                     let perm = 'granted';
                     
-                    // Comprobar si la API soporta queryPermission para evitar el TypeError
+                    // Comprobación de seguridad para evitar el TypeError
                     if (typeof handle.queryPermission === 'function') {
                         perm = await handle.queryPermission({ mode: 'readwrite' });
-                        
-                        if (perm !== 'granted') {
-                            if (interactive) {
-                                if (typeof handle.requestPermission === 'function') {
-                                    perm = await handle.requestPermission({ mode: 'readwrite' });
-                                } else {
-                                    perm = 'granted'; // Fallback
-                                }
-                            } else {
-                                const t = $('#toast');
-                                $('#toastIcon').textContent = '💾';
-                                $('#toastMsg').textContent = 'Toca aquí para actualizar la copia de seguridad auto.';
-                                t.className = 'toast show'; 
-                                t.classList.add('toast--action'); t.setAttribute('role','button'); t.tabIndex=0;
-                                
-                                t.onclick = async () => {
-                                    t.classList.remove('show');
-                                    t.onclick = null;
-                                    t.classList.remove('toast--action'); t.setAttribute('role','status'); t.removeAttribute('tabindex');
-                                    await this.run(true); 
-                                };
-                                
-                                clearTimeout(UI.toast.t);
-                                UI.toast.t = setTimeout(() => { 
-                                    t.classList.remove('show'); 
-                                    t.onclick = null; 
-                                    t.classList.remove('toast--action'); t.setAttribute('role','status'); t.removeAttribute('tabindex');
-                                }, 8000);
-                                return;
+                    }
+                    
+                    if (perm !== 'granted') {
+                        if (interactive) {
+                            if (typeof handle.requestPermission === 'function') {
+                                perm = await handle.requestPermission({ mode: 'readwrite' });
                             }
+                        } else {
+                            const t = $('#toast');
+                            $('#toastIcon').textContent = '💾';
+                            $('#toastMsg').textContent = 'Toca aquí para actualizar la copia de seguridad auto.';
+                            t.className = 'toast show toast--action'; 
+                            t.setAttribute('role','button'); t.tabIndex = 0;
+                            
+                            t.onclick = async () => {
+                                t.classList.remove('show', 'toast--action');
+                                t.onclick = null;
+                                t.setAttribute('role','status'); t.removeAttribute('tabindex');
+                                await this.run(true); 
+                            };
+                            
+                            clearTimeout(UI.toast.t);
+                            UI.toast.t = setTimeout(() => { 
+                                t.classList.remove('show', 'toast--action'); 
+                                t.onclick = null; 
+                                t.setAttribute('role','status'); t.removeAttribute('tabindex');
+                            }, 8000);
+                            return;
                         }
                     }
                     
-                    if (perm === 'granted') {
+                    if (perm === 'granted' || typeof handle.createWritable === 'function') {
                         const data = await NurseDB.exportAll();
                         const writable = await handle.createWritable();
                         await writable.write(JSON.stringify(data));
@@ -729,9 +727,6 @@
                     }
                 } catch (e) {
                     console.error('AutoBackup error:', e);
-                    if (interactive && e.name === 'NotAllowedError') {
-                        UI.toast('Permiso denegado para escribir en el archivo', 'error');
-                    }
                 }
             }
         };
@@ -1936,16 +1931,16 @@
                     UI.toast('Excepción guardada'); 
                 };
 
-                // Sincronización Automática con nuevo Proxy
+               // Sincronización Automática
                 $('#syncFestivosBtn').onclick = async () => {
                     const btn = $('#syncFestivosBtn');
                     btn.disabled = true;
                     btn.innerHTML = 'Descargando calendario... ⏳';
                     
                     try {
-                        const url = 'https://calendariosnacionales.com/es/2026/festivos/val/index.ics';
-                        // Nuevo proxy CORS más estable
-                        const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+                        const targetUrl = encodeURIComponent('https://calendariosnacionales.com/es/2026/festivos/val/index.ics');
+                        // Cambiamos a corsproxy.io que no bloquea localhost
+                        const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
                         
                         const response = await fetch(proxyUrl);
                         if (!response.ok) throw new Error('No se pudo acceder al servidor de calendarios');
@@ -1989,10 +1984,7 @@
                         for (const ev of events) {
                             if (!existingDates.has(ev.date)) {
                                 await NurseDB.put('exceptions', { 
-                                    id: uid(), 
-                                    date: ev.date, 
-                                    type: 'Festivo', 
-                                    title: ev.title 
+                                    id: uid(), date: ev.date, type: 'Festivo', title: ev.title 
                                 });
                                 addedCount++;
                             }
@@ -2003,7 +1995,7 @@
                         renderSlideOverContent('exceptions');
                         
                     } catch (error) {
-                        UI.alert('Error de sincronización', 'No se pudieron descargar los festivos: ' + error.message);
+                        UI.alert('Error de sincronización', 'No se pudieron descargar los festivos. Inténtalo más tarde.');
                         btn.disabled = false;
                         btn.innerHTML = '<span class="text-section mr-2">📅</span> Sincronizar Festivos (Com. Valenciana)';
                     }
