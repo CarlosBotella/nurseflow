@@ -200,11 +200,23 @@
         .modal-actions { display: flex; gap: var(--space-sm); margin-top: var(--space-lg); justify-content: flex-end;}
         
         .toast {
-            position: fixed; bottom: calc(env(safe-area-inset-bottom) + 80px); left: 50%; transform: translateX(-50%) translateY(100px);
-            background: var(--text-main); color: var(--bg-card); padding: 12px 24px; border-radius: 30px; font-weight: 600; font-size: 0.9rem; z-index: 300;
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); white-space: nowrap;
+            position: fixed; top: -100px; left: 50%; transform: translateX(-50%);
+            background: var(--bg-card); color: var(--text-main); 
+            padding: 12px 16px 12px 12px; border-radius: var(--radius-md); 
+            font-weight: 500; font-size: 0.9rem; z-index: 9999;
+            transition: top 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+            box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1), 0 0 0 1px var(--border-color);
+            display: flex; align-items: center; gap: 12px; opacity: 0; pointer-events: none;
+            width: max-content; max-width: 90vw;
         }
-        .toast.show { transform: translateX(-50%) translateY(0); }
+        .toast.show { top: calc(env(safe-area-inset-top) + 20px); opacity: 1; }
+        .toast-icon {
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+            width: 24px; height: 24px; border-radius: 50%;
+            background: var(--success); color: white; font-size: 0.8rem; font-weight: bold;
+        }
+        .toast.error .toast-icon { background: var(--danger); content: "!"; }
+        .toast.info .toast-icon { background: var(--primary); content: "i"; }
 
         .empty-state { text-align: center; padding: var(--space-lg) 0; color: var(--text-muted); }
         .empty-state strong { display: block; color: var(--text-main); margin-bottom: 4px; font-size: 1.1rem;}
@@ -218,12 +230,21 @@
         input:checked + .slider { background-color: var(--primary); }
         input:checked + .slider:before { transform: translateX(22px); }
 
-        .calendar-week { display: flex; justify-content: space-between; margin-bottom: var(--space-md); }
-        .day-chip { display: flex; flex-direction: column; align-items: center; font-size: 0.75rem; color: var(--text-muted); padding: 4px; border-radius: 8px; width: 13%;}
-        .day-chip b { font-size: 1.1rem; color: var(--text-main); font-weight: 600; margin-top: 2px;}
-        .day-chip.today { background: color-mix(in srgb, var(--primary) 15%, transparent); color: var(--primary); }
-        .day-chip.today b { color: var(--primary); }
-        .day-chip.has { border-bottom: 2px solid var(--primary); border-radius: 8px 8px 0 0;}
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-sm); }
+        .calendar-nav { display: flex; gap: 8px; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; margin-bottom: var(--space-md); }
+        .calendar-day-header { font-size: 0.75rem; color: var(--text-muted); font-weight: 600; padding-bottom: 8px; }
+        .calendar-cell { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 8px 2px; border-radius: 8px; cursor: pointer; transition: background 0.2s; min-height: 48px; border: 1px solid transparent; }
+        .calendar-cell:active { background: var(--bg-hover); }
+        .calendar-cell.selected { background: color-mix(in srgb, var(--primary) 15%, transparent); border-color: var(--primary); }
+        .calendar-cell.selected b { color: var(--primary); }
+        .calendar-cell.today b { color: var(--primary); }
+        .calendar-cell .dots { display: flex; gap: 3px; margin-top: 6px; height: 5px; flex-wrap: wrap; justify-content: center;}
+        .dot { width: 5px; height: 5px; border-radius: 50%; }
+        .dot.class { background: var(--primary); }
+        .dot.task { background: var(--warning); }
+        .dot.ex { background: var(--danger); }
+        .calendar-cell.dimmed { opacity: 0.3; }
 
         .score-big { text-align: center; padding: var(--space-lg) 0; color: var(--primary); }
         .score-big b { font-size: 3rem; display: block; line-height: 1; }
@@ -362,7 +383,10 @@
     </div>
 
     <input type="file" id="fileImport" class="hidden" accept=".json">
-    <div id="toast" class="toast"></div>
+    <div id="toast" class="toast">
+        <div class="toast-icon" id="toastIcon">✓</div>
+        <div id="toastMsg">Mensaje</div>
+    </div>
 
     <script>
         const $ = s => document.querySelector(s);
@@ -441,32 +465,23 @@
 
         const NURSE_DATA = {
             procedures: [
-                // TERAPIA INTRAVENOSA Y HEMODERIVADOS
                 { id: 'p1', name: 'Canalización VVP (Vía Venosa Periférica)', materials: ['Compresor', 'Abocath (14G a 24G)', 'Batea y Suero Salino', 'Apósito transparente', 'Gasas', 'Clorhexidina alcohólica >0.5-2%', 'Llave de 3 pasos / Alargadera'], notes: ['Seleccionar venas distales primero (priorizar flexura del codo solo en CVC/PICC)', 'Desinfectar con fricción y dejar secar 30 seg (fundamental)', 'Lavar con suero tras inserción (permeabilidad)', 'Fijación segura atraumática para evitar flebitis mecánica'], favorite: true },
                 { id: 'p2', name: 'Inserción CVC / PICC Ecoguiado', materials: ['Clorhexidina alcohólica al 2%', 'Gorro, mascarilla, bata, guantes y paños amplios estériles', 'Ecógrafo (funda estéril y gel)', 'Adaptador ECG intracavitario', 'Kit de punción (Técnica Seldinger)', 'Mepivacaína 1% o Lidocaína (Jeringas 10cc)', 'SSF 0.9%', 'Dispositivo anclaje sin sutura (Ej. Statlock)'], notes: ['Técnica estricta de BARRERA MÁXIMA', 'Mapeo previo venoso RaPeVA/RaCeVA', 'Confirmación posición: visualización de onda P máxima bifásica en ECG', 'Sustituir sutura por adhesivo reduce bacteriemia (BRC)'], favorite: false },
                 { id: 'p3', name: 'Mantenimiento y Sellado CVC/PICC', materials: ['Clorhexidina alcohólica 2%', 'Jeringas de 10 ml (EXCLUSIVAMENTE)', 'SSF 0.9%', 'Citrato o SSF (según protocolo de sellado)', 'Apósito transparente semipermeable'], notes: ['Cura semanal si el apósito es transparente, o c/48h si es gasa', 'Permeabilizar usando técnica PUSH-STOP (bolos 1 ml) para crear turbulencias', 'NO usar jeringas menores a 10ml para evitar exceso de presión intraluminal y rotura', 'Volumen de cebado al 120% del espacio muerto del catéter', 'Estrictamente contraindicado el uso de pomadas antibióticas (riesgo fúngico)'], favorite: true },
                 { id: 'p4', name: 'Transfusión Sanguínea (Hemoderivados)', materials: ['Bolsa del hemoderivado cruzado', 'Sistema de infusión transfusional con filtro (170-200 micras)', 'SSF 0.9%', 'Monitor de constantes vitales'], notes: ['DOBLE comprobación cruzada a pie de cama (nombre, ABO/Rh, caducidad)', 'Completar la infusión en < 4 horas para evitar proliferación bacteriana', 'Nunca mezclar ni administrar medicación por la misma luz venosa, a excepción de SSF 0.9%', 'Monitorizar SV: Basal, a los 15 minutos (período crítico de reacción anafiláctica/TRALI) y al final'], favorite: true },
-                
-                // VÍA AÉREA Y RESPIRATORIO
                 { id: 'p5', name: 'Asistencia en Toracocentesis', materials: ['Clorhexidina 2% o Povidona', 'Paños, guantes y material estéril', 'Mepivacaína 1%', 'Agujas/Abocath 16-19G o Trócares (20-32 French)', 'Llaves de 3 pasos y Jeringas 30-50 cc', 'Tubos analíticos (Microbiología, Bioquímica, Gasometría)'], notes: ['Posición: Sedente, inclinado hacia adelante con brazos apoyados en mesa (amplía espacios)', 'Abordaje: Bordeando margen SUPERIOR de costilla INFERIOR (evita paquete vasculonervioso)', 'Premedicación recomendada (Atropina/Morfina) vs síncope vasovagal'], favorite: false },
                 { id: 'p6', name: 'Manejo Drenaje Pleural (Pleur-evac)', materials: ['Sistema recolector 3 cámaras (sello de agua)', 'Tubuladuras de conexión', 'Agua bidestilada / SSF para cámara de sello', 'Gasa vaselinada'], notes: ['NO drenar > 1500 ml de golpe (riesgo de Edema Pulmonar Ex-Vacuo)', 'Vigilar fluctuación o "columpio" en la cámara de agua con la respiración', 'Burbujeo constante indica fuga aérea o fístula broncopleural activa', 'JAMÁS pinzar la tubuladura si hay fuga aérea (provocará neumotórax a tensión letal)'], favorite: true },
                 { id: 'p7', name: 'Cuidados de Traqueostomía', materials: ['SSF y agua destilada', 'Clorhexidina acuosa 2%', 'Gasas de celulosa (material que NO desprenda hilos)', 'Cintas de fijación', 'Cánulas de repuesto (mismo diámetro y un calibre menor)', 'Obturador/Fiador'], notes: ['Limpieza estoma: movimientos centrífugos; mantener la piel meticulosamente SECA', 'Limpiar cánula interna e inmersión clorhexidina 15-20 min', 'Educación: prioridad baño vs ducha, sin colonias/sprays, ropa sin pelusas', 'La traqueostomía elude la nasofaringe; requiere fluidificar secreciones y humidificación extra'], favorite: false },
                 { id: 'p8', name: 'Aspiración de Secreciones (Vía artificial)', materials: ['Sondas de aspiración estériles', 'Jeringa 2-5 ml para instilación salina (si resistencia)', 'Equipo protección (gafas, guantes estériles)', 'Sistema de vacío'], notes: ['Técnica estrictamente estéril', 'Aspiración suave, MÁXIMO 10-15 segundos por pase', 'NO sobrepasar la longitud anatómica de la cánula (evitar traumatizar y lesionar la carina traqueal)', 'Preoxigenar siempre al 100% previo a la técnica'], favorite: true },
-
-                // UROLÓGICO
                 { id: 'p9', name: 'Irrigación Vesical Continua (IVC)', materials: ['Sonda de 3 luces (Foley hemostática o Couvelaire de bisel ancho)', 'Solución de SSF 0.9% Gran Volumen (3.000 cc)', 'Equipo de irrigación en "Y"', 'Sistema colector circuito cerrado con grifo', 'Lubricante urológico anestésico (Lidocaína 2%)'], notes: ['Gradiente: Colgar bolsas a 40-50 cm sobre la vejiga', 'Ritmo: Titular dinámicamente. Acelerar si rojo vinoso, enlentecer en "lavado de carne/rosado"', 'PROHIBIDO fluidos hipotónicos o agua destilada: riesgo de absorción y SÍNDROME POST-RTU (intoxicación acuosa por dilución de sodio)', 'Líquidos atemperados para evitar espasmos del detrusor', 'Control BALANCE HÍDRICO estricto (Entradas menos salidas)'], favorite: true },
                 { id: 'p10', name: 'Desobstrucción Vesical (Extracción Coágulos)', materials: ['Guantes estériles', 'Clorhexidina acuosa o Povidona', 'Jeringa de Janet de cono ancho (50-100 cc)', 'SSF 0.9% estéril', 'Empapador'], notes: ['Si el paciente presenta globo/dolor y el flujo de retorno IVC cesa: CLAMPAR infusión para evitar rotura vesical', 'Inyectar 50 cc de SSF con jeringa de Janet y aspirar con fuerza moderada', 'Repetir la fragmentación mecánica hasta que el coágulo sea extraído', 'No reanudar circuito IVC hasta recuperar permeabilidad total'], favorite: false },
                 { id: 'p11', name: 'Sondaje Vesical Estándar (SVD)', materials: ['Sonda Foley de calibre adecuado (ej. 14-16 Ch)', 'Lubricante urológico anestésico', 'Guantes y paño estéril', 'Jeringa 10cc y Agua Bidestilada', 'Bolsa de diuresis (horaria o estándar)'], notes: ['Lavado y antisepsia de meato/glande/vulva', 'Inflar el balón de retención SOLO con Agua Bidestilada (el suero salino puede cristalizar la válvula)', 'Comprobar el balón exteriormente antes de su inserción', 'Técnica aséptica rigurosa (infección principal factor IRAS)'], favorite: true },
-
-                // DIGESTIVO Y HERIDAS
                 { id: 'p12', name: 'Sondaje Nasogástrico (SNG)', materials: ['Sonda gástrica (Levin 1 luz o Salem 2 luces)', 'Lubricante hidrosoluble (¡Nunca base lipídica!)', 'Jeringa cono-catéter de 50 cc', 'Fonendoscopio', 'Esparadrapo hipoalergénico', 'Vaso de agua'], notes: ['Cálculo de longitud técnica NEMU: Punta Nariz -> Lóbulo Oreja -> Xifoides -> Punto medio hasta ombligo', 'Paciente en Fowler; ofrecer sorbos de agua al llegar a orofaringe para cerrar epiglotis', 'Riesgo neumonía lipoidea si se usa vaselina lipídica y va a vía aérea', 'Comprobación de oro: Radiológica (o aspirado pH gástrico)'], favorite: true },
                 { id: 'p13', name: 'Cuidado de Gastrostomía (PEG)', materials: ['SSF', 'Jabón neutro', 'Gasas estériles', 'Clorhexidina acuosa o povidona (fase aguda)', 'Agua corriente para lavados'], notes: ['Curas asépticas periestomales críticas primeros 7-14 días; luego lavado normal de higiene diaria', 'GIRAR 360º sobre su eje y hacer "Push-Pull" (vaivén) a diario para evitar "Buried Bumper" (enterramiento de sonda en mucosa)', 'Decanulación accidental: Urgencia. Obliteración rápida, meter sonda Foley temporal inflada para mantener tracto', 'Lavar agresivamente sonda con 40-50 ml de agua ANTES y DESPUÉS de nutriciones/fármacos'], favorite: false },
                 { id: 'p14', name: 'Cuidados Periestomales (Ostomías)', materials: ['Agua tibia, esponja suave y jabón pH neutro', 'Película barrera polimérica sin alcohol (Cavilon)', 'Spray removedor adhesivo de silicona', 'Plantilla medidora y tijeras curvas', 'Polvos absorbentes (Crusting), pastas y anillos moldeables'], notes: ['Proteger piel de las enzimas proteolíticas corrosivas (sobre todo en ileostomías)', 'Retirada placa: usar removedor de silicona sin tirones para evitar epidermólisis (desgarro)', 'Fenestrar disco adhesivo 1-3 mm MÁS GRANDE que el estoma (evita estrangulamiento y erosión)', 'Lavado: no usar povidona, alcoholes ni óxido de zinc (merman adherencia del disco)'], favorite: true },
                 { id: 'p15', name: 'Manejo Drenajes Quirúrgicos Cerrados (Redón/J-Pratt)', materials: ['Guantes no estériles', 'Recipiente medidor graduado', 'Gasas estériles y antiséptico para incisión'], notes: ['Dispositivos como pera Jackson-Pratt vaciar c/12h o a mitad de capacidad (ya que la fuerza subatmosférica decae)', 'Al vaciar: comprimir el reservorio al máximo, extruir el aire, y tapar (efecto vacío activo)', 'Técnica de Ordeñado ("Milking"): Fijar tubo firmemente pegado a la piel, pellizcar y deslizar hacia la pera', 'Retirada: NEUTRALIZAR VACÍO (destapar) antes de tirar; si no, arrancarás tejido'], favorite: false },
                 { id: 'p16', name: 'Terapia de Presión Negativa (TPN / VAC)', materials: ['Esponja activa (poliuretano reticulado negro o alcohol polivinílico blanco/denso)', 'Film poliuretano adhesivo', 'Campana almohadilla succión (TRAC Pad)', 'Apósito hidrocoloide / silicona de barrera', 'Consola unidad de vacío computarizada'], notes: ['Macrostrain (acerca bordes, quita exudado) + Microstrain (angiogénesis masiva celular)', 'Proteger siempre márgenes piel sana con marco hidrocoloide; la esponja no debe sobrepasar el lecho de la herida', 'Presión estándar: -125 mmHg. Continua 48h (estabiliza), luego intermitente (estimula capilares)', 'Pre-retirada (48-72h): Apagar e instilar SSF por campana para macerar coágulos de granulación y evitar sangrado agresivo'], favorite: true },
                 { id: 'p17', name: 'Cura de UPP / Herida Compleja', materials: ['Suero Fisiológico o Solución Poliheximanida', 'Gasas estériles y Guantes', 'Apósitos avanzados (hidrogel, alginato, espuma, hidrocoloide)', 'Instrumental desbridamiento (si precisa)'], notes: ['Limpiar irrigando a presión moderada o con toques suaves, del centro a la periferia', 'NUNCA friccionar el lecho de la herida (destruye granulación neovascular)', 'Abordaje TIME: Tejido, Infección, Humedad, Bordes'], favorite: false },
-                
-                // ANALÍTICAS Y TÉCNICAS GENERALES
                 { id: 'p18', name: 'Extracción Analítica (Vacutainer)', materials: ['Palomilla o Aguja recta', 'Tubos de vacío (en orden estándar)', 'Campana/Adaptador', 'Gasas', 'Compresor venoso'], notes: ['Orden: Hemocultivos → Citrato (Azul, coag) → Suero (Rojo/Oro, bioq) → Heparina (Verde) → EDTA (Lila, hemograma) → Fluoruro (Gris, gluc)', 'Invertir tubos suavemente 8-10 veces', 'No mantener el compresor apretado más de 1-2 minutos (produce alteraciones y hemoconcentración)'], favorite: true },
                 { id: 'p19', name: 'Extracción de Hemocultivos', materials: ['Sets de 2 frascos (Aerobio y Anaerobio)', 'Palomilla de extracción', 'Clorhexidina alcohólica 2%', 'Guantes estériles y gasas'], notes: ['Desinfectar primero la piel del paciente Y los tapones de goma de los frascos de cultivo', 'Con palomilla, llenar SIEMPRE PRIMERO el frasco AEROBIO (el aire atrapado de la alargadera purgada entrará aquí y no matará anaerobios)', 'Procedimiento aséptico puro para evitar falsos positivos bacterianos de piel'], favorite: true },
                 { id: 'p20', name: 'Gasometría Arterial', materials: ['Jeringa heparinizada de fábrica', 'Aguja SC fina', 'Clorhexidina alcohólica', 'Gasas', 'Contenedor corto-punzante rígido'], notes: ['Es obligatorio realizar "Test de Allen" previo (si punción radial) para comprobar red ulnar', 'Punción a 45º (radial) o 90º (femoral)', 'Comprimir entre 5 a 10 min de forma intensa', 'Remitir en hielo si proceso tarda > 15min. Purgar y desechar CUALQUIER burbuja inmediatamente'], favorite: true },
@@ -498,6 +513,9 @@
 
         const _rawState = {
             route: 'today',
+            calendarMode: 'week',
+            calendarViewDate: getLocalISOToday(),
+            calendarSelectedDate: getLocalISOToday(),
             slideOverOpen: false, slideOverView: null, slideOverData: null,
             readOnlyMode: false,
             settings: {
@@ -543,9 +561,21 @@
         });
 
         const UI = {
-            toast(msg) {
-                const t = $('#toast'); t.textContent = msg; t.classList.add('show');
-                clearTimeout(UI.toast.t); UI.toast.t = setTimeout(() => t.classList.remove('show'), 3000);
+            toast(msg, type = 'success') {
+                const t = $('#toast');
+                const icon = $('#toastIcon');
+                
+                // Configurar el icono y color según el tipo de mensaje
+                t.className = `toast ${type}`;
+                if(type === 'error') icon.textContent = '!';
+                else if(type === 'info') icon.textContent = 'i';
+                else icon.textContent = '✓';
+
+                $('#toastMsg').textContent = msg;
+                
+                t.classList.add('show');
+                clearTimeout(UI.toast.t); 
+                UI.toast.t = setTimeout(() => t.classList.remove('show'), 3500);
             },
             async confirm(title, text, confirmBtn = 'Aceptar', danger = false) {
                 return new Promise(resolve => {
@@ -568,6 +598,80 @@
             openSlide(view, title, data = null) {
                 state.slideOverView = view; state.slideOverData = data;
                 $('#slideOverTitle').textContent = title; state.slideOverOpen = true;
+            }
+        };
+
+        const AutoBackup = {
+            async setup() {
+                if (!('showSaveFilePicker' in window)) return UI.alert('No compatible', 'Tu dispositivo (ej. iPhone/Safari) no soporta el autoguardado en segundo plano. Sigue usando la Exportación Manual.');
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: 'nurseflow-backup-auto.json',
+                        types: [{ description: 'Archivo de Respaldo JSON', accept: { 'application/json': ['.json'] } }]
+                    });
+                    await NurseDB.put('settings', { id: 'backupHandle', handle });
+                    UI.toast('Archivo de autoguardado enlazado con éxito', 'success');
+                    await this.run(true);
+                } catch (e) {
+                    if(e.name !== 'AbortError') UI.toast('Error al enlazar el archivo', 'error');
+                }
+            },
+            async run(interactive = false) {
+                if (!('showSaveFilePicker' in window)) return;
+                try {
+                    const record = await NurseDB.get('settings', 'backupHandle');
+                    if (!record || !record.handle) return;
+                    
+                    const handle = record.handle;
+                    // Verificamos si tenemos permiso para escribir en ese archivo
+                    let perm = await handle.queryPermission({ mode: 'readwrite' });
+                    
+                    if (perm !== 'granted') {
+                        if (interactive) {
+                            // Si el usuario acaba de tocar el botón, el navegador nos permite pedir el permiso
+                            perm = await handle.requestPermission({ mode: 'readwrite' });
+                        } else {
+                            // Si acaba de abrir la app, el navegador NO nos deja pedir permiso sin un "clic" previo.
+                            // Lanzamos una notificación para que el usuario haga clic.
+                            const t = $('#toast');
+                            $('#toastIcon').textContent = '💾';
+                            $('#toastMsg').textContent = 'Toca aquí para actualizar la copia de seguridad auto.';
+                            t.className = 'toast show'; 
+                            t.style.cursor = 'pointer';
+                            t.style.background = 'var(--primary)';
+                            t.style.color = 'white';
+                            
+                            t.onclick = async () => {
+                                t.classList.remove('show');
+                                t.onclick = null;
+                                t.style.cursor = 'default';
+                                t.style.background = '';
+                                t.style.color = '';
+                                await this.run(true); // Ahora sí tenemos el "clic"
+                            };
+                            
+                            clearTimeout(UI.toast.t);
+                            UI.toast.t = setTimeout(() => { 
+                                t.classList.remove('show'); 
+                                t.onclick = null; 
+                                t.style.background = '';
+                                t.style.color = '';
+                            }, 8000);
+                            return;
+                        }
+                    }
+                    
+                    // Si llegamos aquí, tenemos permiso total para reescribir el mismo archivo en silencio
+                    if (perm === 'granted') {
+                        const data = await NurseDB.exportAll();
+                        const writable = await handle.createWritable();
+                        await writable.write(JSON.stringify(data));
+                        await writable.close();
+                        if (interactive) UI.toast('Autoguardado actualizado en segundo plano ✓', 'success');
+                    }
+                } catch (e) {
+                    console.error('AutoBackup error:', e);
+                }
             }
         };
 
@@ -610,12 +714,18 @@
 
         async function renderToday(container) {
             setTitle('Hoy', state.settings.profileName || 'NurseFlow');
-            const [cases, tasks, days, schedule] = await Promise.all([NurseDB.all('cases'), NurseDB.all('tasks'), NurseDB.all('days'), NurseDB.all('schedule')]);
+            // Añadimos 'exceptions' y 'NurseDB.all('exceptions')' al array de descarga
+            const [cases, tasks, days, schedule, exceptions] = await Promise.all([NurseDB.all('cases'), NurseDB.all('tasks'), NurseDB.all('days'), NurseDB.all('schedule'), NurseDB.all('exceptions')]);
             const today = getLocalISOToday();
             
             const pending = tasks.filter(x => !x.done && (!x.due || x.due >= today)).sort((a,b) => (a.due||'9999').localeCompare(b.due||'9999'));
             const dow = new Date().getDay();
-            const todayClasses = schedule.filter(x => Number(x.day) === dow).sort((a,b) => a.start.localeCompare(b.start));
+            const todayEx = exceptions.filter(x => x.date === today);
+            const isFestivoToday = todayEx.some(x => x.type === 'Festivo');
+            const cancellationsToday = todayEx.filter(x => x.type === 'Cancelación').map(x => x.classId);
+            
+            // Si es festivo, no hay clases. Si no es festivo, filtramos las que el profesor haya suspendido hoy.
+            const todayClasses = isFestivoToday ? [] : schedule.filter(x => Number(x.day) === dow && !cancellationsToday.includes(x.id)).sort((a,b) => a.start.localeCompare(b.start));
             
             const isPracActive = state.settings.hasPracticum && (!state.settings.periodStart || today >= state.settings.periodStart) && (!state.settings.periodEnd || today <= state.settings.periodEnd);
             const todayCases = cases.filter(x => x.date === today);
@@ -645,7 +755,7 @@
             html += UIHelpers.section('Accesos rápidos');
             html += `<div class="grid-2">
                 <div class="quick-action" data-action="openSlide" data-view="caseForm">
-                    <div class="ico">＋</div><strong>Nuevo caso</strong><small>Registro anonimizado</small>
+                    <div class="ico">＋</div><strong>Nuevo caso</strong><small>Registro clínico</small>
                 </div>
                 <div class="quick-action" data-action="goRoute" data-val="batea">
                     <div class="ico">▤</div><strong>La Batea</strong><small>Técnicas y material</small>
@@ -680,46 +790,146 @@
         async function renderUniversity(container) {
             setTitle('Universidad', state.settings.course);
             const [schedule, tasks, exceptions] = await Promise.all([NurseDB.all('schedule'), NurseDB.all('tasks'), NurseDB.all('exceptions')]);
-            const selectedNames = state.settings.selectedSubjects.length ? state.settings.selectedSubjects.length + ' asignaturas' : 'Plan académico activo';
+
+            const baseDate = new Date(state.calendarViewDate + 'T12:00:00');
+            let startDate = new Date(baseDate);
+            let daysToRender = 7;
+
+            if (state.calendarMode === 'week') {
+                const delta = (baseDate.getDay() + 6) % 7;
+                startDate.setDate(baseDate.getDate() - delta);
+            } else {
+                startDate.setDate(1); 
+                const delta = (startDate.getDay() + 6) % 7;
+                startDate.setDate(startDate.getDate() - delta); 
+                daysToRender = 42; // 6 semanas
+            }
+
+            const monthNames = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+            const viewMonth = monthNames[baseDate.getMonth()] + ' ' + baseDate.getFullYear();
 
             let html = `
                 <div class="card">
-                    <strong>${esc(state.settings.course)}</strong>
-                    <p class="sub muted" style="font-size:0.85rem">${state.settings.university} · ${selectedNames}</p>
-                </div>
-                <div class="grid-2">
-                    <div class="quick-action" data-action="openSlide" data-view="tasks">
-                        <div class="ico">✓</div><strong>Pendientes</strong><small>${tasks.filter(t=>!t.done).length} activos</small>
+                    <div class="calendar-header">
+                        <strong style="font-size:1.1rem; text-transform:capitalize;">${viewMonth}</strong>
+                        <div class="calendar-nav">
+                            <button class="btn icon-only" style="height:32px; width:32px" data-action="calPrev">‹</button>
+                            <button class="btn" style="height:32px; padding:0 12px" data-action="calToggle">${state.calendarMode === 'week' ? 'Ver Mes' : 'Ver Sem'}</button>
+                            <button class="btn icon-only" style="height:32px; width:32px" data-action="calNext">›</button>
+                        </div>
                     </div>
-                    <div class="quick-action" data-action="openSlide" data-view="exceptions">
-                        <div class="ico">↺</div><strong>Excepciones</strong><small>${exceptions.length} fechas</small>
-                    </div>
-                </div>
-                ${UIHelpers.section('Semana tipo', `<button class="btn" style="height:32px; padding:0 12px" data-action="openSlide" data-view="classForm">Añadir</button>`)}
+                    <div class="calendar-grid">
+                        ${['L','M','X','J','V','S','D'].map(d => `<div class="calendar-day-header">${d}</div>`).join('')}
             `;
 
-            const base = new Date(); const monday = new Date(base); const delta = (base.getDay() + 6) % 7; monday.setDate(base.getDate() - delta);
-            html += `<div class="calendar-week">` + Array.from({length: 7}, (_, i) => {
-                const d = new Date(monday); d.setDate(monday.getDate() + i); const day = (i + 1) % 7; const has = schedule.some(x => +x.day === day);
-                return `<div class="day-chip ${d.toDateString() === base.toDateString() ? 'today' : ''} ${has ? 'has' : ''}">${['L','M','X','J','V','S','D'][i]}<b>${d.getDate()}</b></div>`;
-            }).join('') + `</div>`;
+            for (let i = 0; i < daysToRender; i++) {
+                const d = new Date(startDate);
+                d.setDate(startDate.getDate() + i);
+                const isoDate = d.toISOString().slice(0, 10);
+                
+                const isToday = isoDate === getLocalISOToday();
+                const isSelected = isoDate === state.calendarSelectedDate;
+                const isCurrentMonth = d.getMonth() === baseDate.getMonth();
+                
+                const dbDayIndex = d.getDay(); // 0=Domingo
+                const dayEx = exceptions.filter(x => x.date === isoDate);
+                const isFestivo = dayEx.some(x => x.type === 'Festivo');
+                const cancellations = dayEx.filter(x => x.type === 'Cancelación').map(x => x.classId);
+                
+                // Si es festivo no pintamos punto de clase. Tampoco si la clase ha sido cancelada individualmente.
+                const activeClasses = schedule.filter(x => +x.day === dbDayIndex && !cancellations.includes(x.id));
+                const hasClass = !isFestivo && activeClasses.length > 0;
+                
+                const hasTask = tasks.some(x => x.due === isoDate && !x.done);
+                // No contamos las cancelaciones ni festivos anulados como puntos rojos
+                const hasEx = dayEx.some(x => x.type !== 'Cancelación' && x.type !== 'Festivo Anulado');
 
-            const days = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
-            const dayIndexes = [1,2,3,4,5,6,0];
-            let hasClasses = false;
+                html += `
+                    <div class="calendar-cell ${isToday ? 'today' : ''} ${isSelected ? 'selected' : ''} ${!isCurrentMonth ? 'dimmed' : ''}" data-action="calSelect" data-val="${isoDate}">
+                        <b>${d.getDate()}</b>
+                        <div class="dots">
+                            ${hasClass ? '<div class="dot class" title="Clases"></div>' : ''}
+                            ${hasTask ? '<div class="dot task" title="Tareas"></div>' : ''}
+                            ${hasEx ? '<div class="dot ex" title="Excepciones"></div>' : ''}
+                        </div>
+                    </div>`;
+            }
+            html += `</div></div>`; // Cierre de calendar-grid y card
+
+            // Renderizar la agenda interactiva del día seleccionado
+            const selDateObj = new Date(state.calendarSelectedDate + 'T12:00:00');
+            const dayClasses = schedule.filter(x => +x.day === selDateObj.getDay()).sort((a,b) => a.start.localeCompare(b.start));
+            const dayTasks = tasks.filter(x => x.due === state.calendarSelectedDate);
+            const dayEx = exceptions.filter(x => x.date === state.calendarSelectedDate);
+
+            const isFestivo = dayEx.some(x => x.type === 'Festivo');
+            const classCancellations = dayEx.filter(x => x.type === 'Cancelación');
+
+            const displayDate = new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(selDateObj);
             
-            dayIndexes.forEach((dayIdx, i) => {
-                const dayClasses = schedule.filter(x => +x.day === dayIdx).sort((a,b) => a.start.localeCompare(b.start));
-                if(dayClasses.length) {
-                    hasClasses = true;
-                    html += `<h4 style="margin: 16px 0 8px; font-size: 0.9rem; color: var(--text-muted);">${days[i]}</h4>`;
-                    html += `<div class="list">` + dayClasses.map(x => UIHelpers.listRow({
-                        title: x.title, sub: `${x.start} - ${x.end} ${x.room?'· '+x.room:''}`, icon: x.start.slice(0,2), action: `data-action="openSlide" data-view="classForm" data-id="${x.id}"`
-                    })).join('') + `</div>`;
-                }
-            });
+            html += `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-top:24px; margin-bottom:16px;">
+                    <h3 style="text-transform:capitalize; margin:0; font-size:1.1rem;">${displayDate}</h3>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn icon-only" style="height:32px; width:32px; background:var(--primary); color:white;" data-action="openSlide" data-view="classForm" title="Añadir Clase">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path></svg>
+                        </button>
+                        <button class="btn icon-only" style="height:32px; width:32px; background:var(--warning); color:white;" data-action="openSlide" data-view="tasks" title="Añadir Tarea">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
+                        </button>
+                        <button class="btn icon-only" style="height:32px; width:32px; background:var(--danger); color:white;" data-action="openSlide" data-view="exceptions" title="Añadir Festivo o Excepción">
+                            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                        </button>
+                    </div>
+                </div>
+            `;
 
-            if(!hasClasses) html += UIHelpers.noData('Tu horario está vacío', 'Añade tus clases para organizarte.');
+            // Mostramos los eventos especiales (Festivos, exámenes y cancelaciones manuales)
+            if(dayEx.length) {
+                html += `<div class="list" style="margin-bottom:16px;">${dayEx.map(x => {
+                    const isCanceled = x.type === 'Cancelación' || x.type === 'Festivo Anulado';
+                    return `
+                    <div class="list-row">
+                        <div class="avatar" style="background:${isCanceled ? 'var(--bg-hover)' : 'var(--danger-bg)'}; color:${isCanceled ? 'var(--text-muted)' : 'var(--danger)'};">!</div>
+                        <div class="grow">
+                            <strong style="${isCanceled ? 'text-decoration:line-through; opacity:0.6;' : ''}">${esc(x.title)}</strong>
+                            <div class="sub">${esc(x.type)}</div>
+                        </div>
+                        <button class="btn icon-only" data-action="deleteEx" data-id="${x.id}" title="${isCanceled ? 'Restaurar' : 'Eliminar'}" style="color:${isCanceled ? 'var(--success)' : 'var(--danger)'}; font-size: ${isCanceled ? '1.2rem' : '1.5rem'};">
+                            ${isCanceled ? '↺' : '×'}
+                        </button>
+                    </div>
+                `}).join('')}</div>`;
+            }
+
+            if (isFestivo) {
+                html += UIHelpers.notice('Hoy es festivo. Las clases de este día quedan suspendidas.', true);
+            } else if (dayClasses.length || dayTasks.length) {
+                html += `<div class="list">`;
+                dayClasses.forEach(x => {
+                    const isCancelled = classCancellations.find(c => c.classId === x.id);
+                    // Si no está cancelada, la pintamos con el botón de "Suspender hoy"
+                    if (!isCancelled) {
+                        html += `
+                            <div class="list-row">
+                                <div class="avatar">${x.start.slice(0,2)}</div>
+                                <div class="grow clickable" data-action="openSlide" data-view="classForm" data-id="${x.id}">
+                                    <strong>${esc(x.title)}</strong>
+                                    <div class="sub">${x.start} - ${x.end} ${x.room?'· '+esc(x.room):''}</div>
+                                </div>
+                                <button class="btn" style="font-size:0.75rem; padding:4px 8px; height:auto; min-height:24px; background:var(--danger-bg); color:var(--danger);" data-action="cancelClassDate" data-id="${x.id}" data-title="${esc(x.title)}" title="Suspender esta clase solo por hoy">Suspender hoy</button>
+                            </div>
+                        `;
+                    }
+                });
+                dayTasks.forEach(x => {
+                    html += `<div class="list-row"><label class="check-row" style="margin:0; flex:1;"><input type="checkbox" data-task="${x.id}" ${x.done?'checked':''}><span><strong style="text-decoration: ${x.done?'line-through':'none'}; opacity: ${x.done?'0.6':'1'}">${esc(x.title)}</strong><div class="sub">${esc(x.category)}</div></span></label></div>`;
+                });
+                html += `</div>`;
+            } else if (!dayEx.length) {
+                html += UIHelpers.noData('Agenda despejada', 'No tienes clases ni entregas para este día.');
+            }
+
             container.innerHTML = html;
         }
 
@@ -862,7 +1072,7 @@
                             <input class="field ${isCustom?'':'hidden'}" id="customSubject" placeholder="Nombre de la actividad" value="${isCustom?esc(row.title):''}" style="margin-top:8px">
                             
                             <div class="form-row" style="margin-top:16px;">
-                                <div><label>Día</label><select class="field" name="day">${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map((x,i)=>`<option value="${i}" ${row?.day==i?'selected':''}>${x}</option>`).join('')}</select></div>
+                                <div><label>Día</label><select class="field" name="day">${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map((x,i)=> { const targetDay = row ? row.day : new Date(state.calendarSelectedDate + 'T12:00:00').getDay(); return `<option value="${i}" ${targetDay==i?'selected':''}>${x}</option>`; }).join('')}</select></div>
                                 <div><label>Aula</label><input class="field" name="room" placeholder="Ej. B-04" value="${esc(row?.room||'')}"></div>
                             </div>
                             <div class="form-row">
@@ -880,17 +1090,22 @@
                     const rows = (await NurseDB.all('exceptions')).sort((a,b)=>a.date.localeCompare(b.date));
                     html = `
                         ${UIHelpers.notice('Registra festivos, semanas de exámenes o días sin clase.', true)}
+                        
+                        <button class="btn block" id="syncFestivosBtn" style="margin-bottom:16px; background:var(--bg-hover); color:var(--primary); border:1px solid var(--primary);">
+                            <span style="font-size:1.2rem; margin-right:8px;">📅</span> Sincronizar Festivos (Com. Valenciana)
+                        </button>
+
                         <form id="exceptionForm" class="card">
                             <div class="form-row">
-                                <div><label>Fecha</label><input class="field" type="date" name="date" required></div>
+                                <div><label>Fecha</label><input class="field" type="date" name="date" value="${state.calendarSelectedDate}" required></div>
                                 <div><label>Tipo</label><select class="field" name="type"><option>Festivo</option><option>Examen</option><option>Otro</option></select></div>
                             </div>
                             <label>Descripción</label>
                             <input class="field" name="title" required placeholder="Ej. Fiesta local o Examen Farma">
-                            <button class="btn primary block">Añadir Fecha</button>
+                            <button class="btn primary block" style="margin-top:8px;">Añadir Fecha</button>
                         </form>
                         <h4 style="margin: 24px 0 8px;">Próximas excepciones</h4>
-                        <div class="list" id="exceptionList">${rows.map(x=>UIHelpers.listRow({title: `${dateFmt(x.date)} · ${x.title}`, sub: x.type, icon: '!', action: `data-action="deleteEx" data-id="${x.id}"`})).join('') || UIHelpers.noData('Calendario despejado', 'No hay excepciones registradas.')}</div>`;
+                        <div class="list" id="exceptionList">${rows.map(x=>UIHelpers.listRow({title: `${dateFmt(x.date)} ·${x.title}`, sub: x.type, icon: '!', action: `data-action="deleteEx" data-id="${x.id}"`})).join('') || UIHelpers.noData('Calendario despejado', 'No hay excepciones registradas.')}</div>`;
                 }
                 else if (view === 'tasks') {
                     const rows = (await NurseDB.all('tasks')).sort((a,b)=>(a.done-b.done) || ((a.due||'9999').localeCompare(b.due||'9999')));
@@ -899,7 +1114,7 @@
                             <label>Nueva Tarea</label>
                             <input class="field" name="title" required placeholder="Ej. Entregar trabajo de anatomía">
                             <div class="form-row">
-                                <div><label>Fecha límite</label><input class="field" type="date" name="due"></div>
+                                <div><label>Fecha límite</label><input class="field" type="date" name="due" value="${state.calendarSelectedDate}"></div>
                                 <div><label>Categoría</label><select class="field" name="category"><option>Universidad</option><option>Prácticum</option><option>Personal</option></select></div>
                             </div>
                             <button class="btn primary block">Añadir Tarea</button>
@@ -922,7 +1137,7 @@
                             <hr style="border:0; border-top:1px solid var(--border-color); margin: 24px 0;">
                             
                             <h3 style="margin-bottom:16px;">Motivo Clínico</h3>
-                            <label>Diagnóstico Principal (CIE-11)</label>
+                            <label>Diagnóstico Principal (Buscador OMS)</label>
                             <input class="field" name="diagnosis" id="caseDiagnosis" value="${esc(row?.diagnosis||'')}" placeholder="Escribe para buscar (ej. Neumonía)" autocomplete="off" required>
                             <input type="hidden" name="icdCode" id="caseIcdCode" value="${esc(row?.icdCode||'')}">
                             <input type="hidden" name="icdValidated" id="caseIcdValidated" value="${row?.icdValidated ? 'true' : 'false'}">
@@ -932,8 +1147,8 @@
                             </div>
                             <div id="icdAutocomplete" class="list" style="display:none; margin-bottom:16px; background:var(--bg-hover); padding:8px; border-radius:var(--radius-md);"></div>
                             
-                            <label>Contexto del paciente (Breve)</label>
-                            <textarea class="field" name="context" placeholder="Ej. Varón 65a. Acude por disnea progresiva de 3 días de evolución..." style="min-height:80px;">${esc(row?.context||'')}</textarea>
+                            <label>Contexto del paciente (Auto-plantilla rápida)</label>
+                            <textarea class="field" name="context" placeholder="Al seleccionar un diagnóstico arriba, este campo se rellenará automáticamente con una plantilla clínica para que no tengas que escribir de cero." style="min-height:110px;">${esc(row?.context||'')}</textarea>
                             
                             <hr style="border:0; border-top:1px solid var(--border-color); margin: 24px 0;">
                             
@@ -1370,7 +1585,7 @@
                     html = `
                         <div class="card">
                             <label>Tema visual</label>
-                            <select class="field" id="themeSel"><option value="system" ${state.settings.theme==='system'?'selected':''}>Automático (Sistema)</option><option value="light" ${state.settings.theme==='light'?'selected':''}>☀️️ Claro</option><option value="dark" ${state.settings.theme==='dark'?'selected':''}>🌙 Oscuro</option></select>
+                            <select class="field" id="themeSel"><option value="system" ${state.settings.theme==='system'?'selected':''}>Automático (Sistema)</option><option value="light" ${state.settings.theme==='light'?'selected':''}>☀ Claro</option><option value="dark" ${state.settings.theme==='dark'?'selected':''}>🌙 Oscuro</option></select>
                             
                             <hr style="border:0; border-top:1px solid var(--border-color); margin: 24px 0;">
                             
@@ -1414,12 +1629,27 @@
                         </div>`;
                 }
                 else if (view === 'settingsData') {
+                    // Verificamos si el navegador es compatible y si ya hay un archivo enlazado
+                    const canAutoBackup = 'showSaveFilePicker' in window;
+                    const hasBackupHandle = (await NurseDB.get('settings', 'backupHandle')) ? true : false;
+                    
                     html = `
                         ${UIHelpers.notice('Tu información reside exclusivamente en tu dispositivo móvil. Realiza copias de seguridad regularmente.', true)}
+                        
+                        ${canAutoBackup ? `
+                        <div class="card" style="border-color:var(--primary); margin-bottom:24px;">
+                            <h4 style="color:var(--primary); margin-bottom:8px;">Autoguardado en Dispositivo</h4>
+                            <p class="muted small" style="margin-bottom:12px;">Enlaza un archivo local. Al abrir la app se actualizará automáticamente reescribiendo el mismo archivo, sin crear duplicados.</p>
+                            <button class="btn block" id="setupAutoBackupBtn" style="background:var(--bg-hover); color:var(--primary); border:1px solid var(--primary);">
+                                ${hasBackupHandle ? '✓ Archivo enlazado (Tocar para re-vincular)' : 'Configurar Archivo de Autoguardado'}
+                            </button>
+                        </div>
+                        ` : ''}
+
                         <div class="list">
                             <button class="list-row clickable" id="exportModalBtn">
                                 <div class="avatar" style="background:var(--primary); color:white;">⇩</div>
-                                <div class="grow"><strong>Exportar Copia de Seguridad</strong><div class="sub">Archivo JSON local</div></div>
+                                <div class="grow"><strong>Exportación Manual</strong><div class="sub">Descarga un nuevo archivo JSON con la fecha actual</div></div>
                             </button>
                             <button class="list-row clickable" id="importBtn">
                                 <div class="avatar">⇧</div>
@@ -1506,13 +1736,102 @@
                 });
             }
             if(view === 'exceptions') {
-                $('#exceptionForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); state.slideOverOpen = false; renderView(); UI.toast('Excepción guardada'); };
+                // Guardado manual
+                $('#exceptionForm').onsubmit = async e => { 
+                    e.preventDefault(); 
+                    const f = new FormData(e.target); 
+                    await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); 
+                    state.slideOverOpen = false; 
+                    renderView(); 
+                    UI.toast('Excepción guardada'); 
+                };
+
+                // Sincronización Automática
+                $('#syncFestivosBtn').onclick = async () => {
+                    const btn = $('#syncFestivosBtn');
+                    btn.disabled = true;
+                    btn.innerHTML = 'Descargando calendario... ⏳';
+                    
+                    try {
+                        // Cambiamos webcals:// por https:// y usamos un proxy público para evitar el bloqueo CORS del navegador
+                        const url = 'https://calendariosnacionales.com/es/2026/festivos/val/index.ics';
+                        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+                        
+                        const response = await fetch(proxyUrl);
+                        if (!response.ok) throw new Error('No se pudo acceder al servidor de calendarios');
+                        
+                        const text = await response.text();
+                        const lines = text.split(/\r?\n/);
+                        let inEvent = false, currentEvent = {}, events = [];
+                        
+                        // Procesador del archivo .ics
+                        for (const line of lines) {
+                            if (line.startsWith('BEGIN:VEVENT')) { 
+                                inEvent = true; currentEvent = {}; 
+                            }
+                            else if (line.startsWith('END:VEVENT')) { 
+                                inEvent = false; 
+                                if (currentEvent.date && currentEvent.title) events.push(currentEvent); 
+                            }
+                            else if (inEvent) {
+                                // Extraemos la fecha (Soporta DTSTART;VALUE=DATE:20260101 o DTSTART:20260101T000000Z)
+                                if (line.startsWith('DTSTART')) {
+                                    const parts = line.split(':');
+                                    if (parts.length > 1) {
+                                        const dateStr = parts[1].trim().substring(0, 8); // Cogemos YYYYMMDD
+                                        if (dateStr.length === 8) {
+                                            currentEvent.date = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
+                                        }
+                                    }
+                                } 
+                                // Extraemos el título del festivo
+                                else if (line.startsWith('SUMMARY')) {
+                                    const parts = line.split(':');
+                                    if (parts.length > 1) currentEvent.title = parts.slice(1).join(':').trim();
+                                }
+                            }
+                        }
+                        
+                        if(events.length === 0) throw new Error('El archivo del calendario estaba vacío.');
+
+                        // Recuperamos las excepciones actuales para NO duplicarlas
+                        const existing = await NurseDB.all('exceptions');
+                        const existingDates = new Set(existing.map(e => e.date));
+                        let addedCount = 0;
+
+                        for (const ev of events) {
+                            if (!existingDates.has(ev.date)) {
+                                await NurseDB.put('exceptions', { 
+                                    id: uid(), 
+                                    date: ev.date, 
+                                    type: 'Festivo', 
+                                    title: ev.title 
+                                });
+                                addedCount++;
+                            }
+                        }
+                        
+                        UI.toast(`¡Éxito! ${addedCount} festivos nuevos sincronizados.`);
+                        
+                        // Refrescamos las vistas para que aparezcan al instante en la lista y en el calendario
+                        renderView();
+                        renderSlideOverContent('exceptions');
+                        
+                    } catch (error) {
+                        UI.alert('Error de sincronización', 'No se pudieron descargar los festivos: ' + error.message);
+                        btn.disabled = false;
+                        btn.innerHTML = '<span style="font-size:1.2rem; margin-right:8px;">📅</span> Sincronizar Festivos (Com. Valenciana)';
+                    }
+                };
             }
             if(view === 'tasks') {
-                $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });$('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
+                $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });
+                $('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
             }
             if(view === 'caseForm') {
-                attachICDAutocomplete($('#caseDiagnosis'), $('#caseIcdCode'), $('#caseIcdValidated'), $('#icdStatus'), $('#icdAutocomplete'));
+                const contextTextarea = document.querySelector('#caseForm [name="context"]');
+                attachICDAutocomplete($('#caseDiagnosis'), $('#caseIcdCode'), $('#caseIcdValidated'), $('#icdStatus'), $('#icdAutocomplete'), contextTextarea);
+                
                 $('#caseForm').onsubmit = async e => {
                     e.preventDefault();
                     const f = new FormData(e.target);
@@ -1607,7 +1926,8 @@
                             <button class="btn danger" data-r="again">No me la sabía</button>
                             <button class="btn success" data-r="good" style="background:var(--success); color:white;">Bien, la sabía</button>
                         </div>`;
-                    $('#fShow').onclick = () => { $('#fAns').classList.remove('hidden'); $('#fRate').classList.remove('hidden'); $('#fShow').classList.add('hidden'); };                     $$('[data-r]').forEach(b => b.onclick = async () => {
+                    $('#fShow').onclick = () => { $('#fAns').classList.remove('hidden'); $('#fRate').classList.remove('hidden'); $('#fShow').classList.add('hidden'); };                     
+                    $$('[data-r]').forEach(b => b.onclick = async () => {
                         const r = b.dataset.r; c.reps++; 
                         if(r==='again') { c.interval = 0; c.due = getLocalISOToday(); }
                         if(r==='good') { c.interval = Math.max(1, Math.round((c.interval||1)*1.8)); const d = new Date(); d.setDate(d.getDate()+c.interval); c.due = d.toISOString().slice(0,10); }
@@ -1627,8 +1947,8 @@
                         </div>
                         <div class="list">${q.o.map((o,i)=>`<button class="btn" style="justify-content:flex-start; text-align:left; height:auto; min-height:48px; padding:12px;" data-o="${i}">${esc(o)}</button>`).join('')}</div>
                         <div id="qExp" style="margin-top:24px"></div>`;
-                    $$('[data-o]').forEach(b => b.onclick = () => {$$
-('[data-o]').forEach((x,i) => { x.disabled=true; if(i===q.a) { x.style.background='var(--success)'; x.style.color='white'; } else if(i===Number(b.dataset.o)) { x.style.background='var(--danger)'; x.style.color='white'; } });
+                    $$('[data-o]').forEach(b => b.onclick = () => {
+                        $$('[data-o]').forEach((x,i) => { x.disabled=true; if(i===q.a) { x.style.background='var(--success)'; x.style.color='white'; } else if(i===Number(b.dataset.o)) { x.style.background='var(--danger)'; x.style.color='white'; } });
                         if(Number(b.dataset.o)===q.a) score++; g.dataset.score = score;
                         $('#qExp').innerHTML = `${UIHelpers.notice('Explicación: ' + esc(q.e), true)}<button class="btn primary block" id="qNext" style="margin-top:16px;">Siguiente Pregunta</button>`;
                         $('#qNext').onclick = () => { g.dataset.idx = idx + 1; initQuiz(); };
@@ -1658,13 +1978,15 @@
                 };
             }
             if(view === 'settingsData') {
+                $('#setupAutoBackupBtn')?.addEventListener('click', () => AutoBackup.setup());
+                
                 $('#exportModalBtn').onclick = async () => {
                     const ok = await UI.confirm('Exportar Datos', 'Elige qué deseas exportar:\n- Aceptar: Exportar TODO\n- Cancelar: Exportar solo Portfolio clínico', 'Exportar Todo', false);
                     const storesToExport = ok ? ['settings', 'cases', 'tasks', 'days', 'schedule', 'exceptions', 'pae', 'meds', 'procedures', 'quiz', 'flashcards'] : ['cases', 'days', 'procedures', 'meds'];
                     const data = await NurseDB.exportAll(storesToExport);
                     const url = URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
                     const a = document.createElement('a'); a.href = url; a.download = `nurseflow-export-${getLocalISOToday()}.json`; a.click();
-                    UI.toast('Archivo descargado con éxito');
+                    UI.toast('Archivo manual descargado con éxito');
                 };
                 $('#importBtn').onclick = () => $('#fileImport').click();
                 $('#wipeBtn').onclick = async () => { if(await UI.confirm('Peligro Irreversible', '¿Borrar TODOS los datos locales permanentemente? Esto no se puede deshacer.', 'Sí, Borrar Todo', true)) { await NurseDB.reset(); location.reload(); } };
@@ -1706,13 +2028,11 @@
             
             const medProm = fetch(`${base}/medicamento?nregistro=${nregistro}`).then(r=>r.json());
             
-            // CRÍTICO: Añadir Accept: application/json según manual de CIMA
             const segProm = fetch(`${base}/docSegmentado/contenido/1?nregistro=${nregistro}`, {
                 headers: { 'Accept': 'application/json' }
             }).then(r=>r.json()).catch(()=>[]);
 
             const [med, seg] = await Promise.all([medProm, segProm]);
-            // Con la cabecera correcta, 'seg' ya es el array directo de secciones JSON
             return { med, seg };
         }
 
@@ -1720,7 +2040,6 @@
             if (!sections) return result;
             sections.forEach(s => {
                 result.push(s);
-                // CIMA a veces anida subsecciones dentro de una sección padre
                 if (s.secciones && s.secciones.length > 0) flattenCIMASections(s.secciones, result);
             });
             return result;
@@ -1730,7 +2049,6 @@
             if (!Array.isArray(sections)) return '';
             
             let found = null;
-            // Función recursiva por si CIMA anida "4.1" dentro de la sección "4"
             function findSec(list) {
                 for (const s of list) {
                     if (String(s.seccion) === sectionCode || String(s.seccion).startsWith(sectionCode)) {
@@ -1744,7 +2062,6 @@
             
             if (!found || !found.contenido) return '';
             
-            // El manual indica que el contenido viene en formato HTML
             const doc = new DOMParser().parseFromString(found.contenido, 'text/html');
             doc.querySelectorAll('script,style,table').forEach(x=>x.remove());
             return (doc.body.textContent || '').replace(/\s+/g, ' ').trim();
@@ -1795,9 +2112,6 @@
                             const richTitle = item.title || 'Diagnóstico sin título';
                             const cleanTitle = stripHtml(richTitle); 
                             
-                            // Extraemos el ID numérico de la entidad de la URL completa que devuelve la OMS
-                            const entityId = item.id.split('/').pop();
-                            
                             let clinicalContext = '';
                             if (item.matchingPVs && item.matchingPVs.length > 0) {
                                 const synonymMatch = item.matchingPVs.find(pv => pv.propertyId === 'Synonym' || pv.propertyId === 'TitleOfOtherEntity');
@@ -1810,7 +2124,7 @@
                             }
 
                             html += `
-                                <button type="button" class="list-row clickable" data-icdcode="${esc(code)}" data-icdtitle="${esc(cleanTitle)}" data-entityid="${esc(entityId)}" style="text-align:left; padding: 10px; height: auto; min-height: 54px; align-items: flex-start;">
+                                <button type="button" class="list-row clickable" data-icdcode="${esc(code)}" data-icdtitle="${esc(cleanTitle)}" style="text-align:left; padding: 10px; height: auto; min-height: 54px; align-items: flex-start;">
                                     <span class="pill primary" style="min-width:65px; text-align:center; font-weight:bold; font-size:0.8rem; margin-top:2px;">${esc(code)}</span>
                                     <div class="grow" style="margin-left:12px; line-height:1.3; min-width:0;">
                                         <strong style="font-size:0.9rem; display:block; white-space:normal; word-wrap:break-word;">${richTitle}</strong>
@@ -1832,46 +2146,39 @@
                             em.style.borderRadius = '2px';
                         });
 
-                        // EVENTO CLIC EN RESULTADO DE LA OMS
                         resultsBox.querySelectorAll('[data-icdcode]').forEach(b => {
-                            b.onclick = async () => {
+                            b.onclick = () => {
                                 const title = b.dataset.icdtitle;
-                                const entityId = b.dataset.entityid;
-                                
                                 input.value = title;
                                 codeInput.value = b.dataset.icdcode;
                                 validatedInput.value = 'true';
                                 statusBox.innerHTML = '<span style="color:var(--success)">✓ Código validado: <strong>' + esc(b.dataset.icdcode) + '</strong></span>';
                                 resultsBox.style.display = 'none';
 
-                                // DESCARGA DE LA DEFINICIÓN OFICIAL DE LA API
+                                // Auto-generar plantilla narrativa para ahorrar tiempo
                                 if (contextInput && contextInput.value.trim() === '') {
-                                    contextInput.value = "Descargando definición de la OMS...";
-                                    contextInput.disabled = true; // Bloqueamos mientras carga
-                                    
-                                    try {
-                                        const entityUrl = `https://nurseflow-api.carlosb-n.workers.dev/icd/entity/${entityId}`;
-                                        const res = await fetch(entityUrl, { headers: { 'Accept-Language': 'es' } });
-                                        const entityData = await res.json();
-                                        
-                                        const definition = entityData.definition?.['@value'];
-                                        
-                                        if (definition) {
-                                            contextInput.value = `OMS: "${definition}"\n\nPaciente ingresa por este motivo. Constantes al ingreso:\n- TA: \n- FC: \n- SatO2: \n- Tª: \n\nPortador de VVP en [EESS].`;
-                                        } else {
-                                            // Si la OMS no tiene definición escrita para esa enfermedad exacta
-                                            contextInput.value = `Paciente ingresa por cuadro de ${title}.\n\nConstantes al ingreso:\n- TA: \n- FC: \n- SatO2: \n- Tª: \n\nPortador de VVP en [EESS].`;
-                                        }
-                                    } catch (err) {
-                                        // Si falla la red en ese milisegundo
-                                        contextInput.value = `Paciente ingresa por cuadro de ${title}.\n\nConstantes: `;
-                                    } finally {
-                                        contextInput.disabled = false;
-                                        // Feedback visual
-                                        contextInput.style.transition = 'background-color 0.4s';
-                                        contextInput.style.backgroundColor = 'color-mix(in srgb, var(--primary) 15%, transparent)';
-                                        setTimeout(() => contextInput.style.backgroundColor = 'var(--bg-hover)', 600);
+                                    const tLow = title.toLowerCase();
+                                    let template = `Paciente ingresa por cuadro de ${title} de [X] días de evolución. Constantes vitales al ingreso: TA [X], FC [X], SatO2 [X]%, Tª [X]ºC. Portador de VVP en [EESS]. Pendiente de evolución.`;
+
+                                    if (tLow.match(/neumonía|respiratori|asma|epoc|bronq|disnea/)) {
+                                        template = `Paciente ingresa por cuadro de disnea y aumento de trabajo respiratorio asociado a ${title}. Eupneico en reposo con O2 en gafas nasales a [X] lpm. Auscultación: [crepitantes/sibilancias]. Portador de VVP en [EESS]. Se inicia antibioterapia/aerosolterapia pautada.`;
+                                    } else if (tLow.match(/cardíac|corazon|infarto|coronari|angina|arritmia|fibrilaci/)) {
+                                        template = `Paciente ingresa por [descompensación / dolor torácico] asociado a ${title}. Tensión arterial: [X]. Frecuencia cardíaca: [X] lpm. A la exploración: [ausencia/presencia] de edemas periféricos. Portador de VVP en [EESS]. Control estricto de diuresis y balance hídrico.`;
+                                    } else if (tLow.match(/urinari|renal|nefritis|pielonefritis|infecci/)) {
+                                        template = `Paciente ingresa por cuadro compatible con ${title}. Pico febril de [X]ºC. Se recogen cultivos previo a inicio de antibioterapia empírica IV. Portador de VVP en [EESS]. Control de constantes por riesgo de sepsis.`;
+                                    } else if (tLow.match(/fractura|traumatis|cadera|luxaci/)) {
+                                        template = `Paciente ingresa tras caída casual con diagnóstico de ${title}. Presenta dolor, impotencia funcional y deformidad en [Zona]. Exploración neurovascular distal conservada. Portador de VVP en [EESS]. Analgesia pautada. Reposo en cama, pendiente de valoración traumatológica/quirúrgica.`;
+                                    } else if (tLow.match(/digestiv|gastro|vómito|diarrea|abdomin|apendicitis/)) {
+                                        template = `Paciente ingresa por [dolor abdominal / vómitos / deposiciones diarreicas] secundario a ${title}. Abdomen blando y depresible. Dieta [absoluta/blanda]. Portador de VVP con fluidoterapia de mantenimiento a [X] ml/h. Tolerancia oral pendiente de valorar.`;
+                                    } else if (tLow.match(/neurológic|ictus|cerebral|acv|convuls/)) {
+                                        template = `Paciente con alteración neurológica por ${title}. Glasgow: [15]. Pupilas isocóricas y normorreactivas. Portador de VVP en [EESS]. Dieta triturada por riesgo de broncoaspiración. Escala Norton/Barthel [X]. Precisa ayuda total para ABVD.`;
                                     }
+
+                                    contextInput.value = template;
+                                    
+                                    contextInput.style.transition = 'background-color 0.4s';
+                                    contextInput.style.backgroundColor = 'color-mix(in srgb, var(--primary) 15%, transparent)';
+                                    setTimeout(() => contextInput.style.backgroundColor = 'var(--bg-hover)', 600);
                                 }
                             };
                         });
@@ -1899,12 +2206,82 @@
             const view = actionBtn.dataset.view;
 
             if (action === 'goRoute') state.route = val;
-            else if (action === 'openSlide') UI.openSlide(view, actionBtn.textContent.trim() || 'Detalle', id);
+            else if (action === 'calPrev') {
+                const d = new Date(state.calendarViewDate + 'T12:00:00');
+                if (state.calendarMode === 'week') d.setDate(d.getDate() - 7);
+                else d.setMonth(d.getMonth() - 1);
+                state.calendarViewDate = d.toISOString().slice(0, 10);
+                renderView();
+            }
+            else if (action === 'calNext') {
+                const d = new Date(state.calendarViewDate + 'T12:00:00');
+                if (state.calendarMode === 'week') d.setDate(d.getDate() + 7);
+                else d.setMonth(d.getMonth() + 1);
+                state.calendarViewDate = d.toISOString().slice(0, 10);
+                renderView();
+            }
+            else if (action === 'calToggle') {
+                state.calendarMode = state.calendarMode === 'week' ? 'month' : 'week';
+                renderView();
+            }
+            else if (action === 'calSelect') {
+                state.calendarSelectedDate = val;
+                renderView();
+            }
+            else if (action === 'openSlide') {
+                const rawTitle = actionBtn.querySelector('strong')?.textContent || actionBtn.getAttribute('aria-label') || actionBtn.textContent;
+                const cleanTitle = rawTitle.replace(/\s+/g, ' ').trim() || 'Detalle';
+                UI.openSlide(view, cleanTitle, id);
+            }
             else if (action === 'closeSlideOver') state.slideOverOpen = false;
             else if (action === 'toggleGloves') { state.settings.glovesMode = !state.settings.glovesMode; saveSettings(); UI.toast(state.settings.glovesMode ? 'Modo Guantes activado' : 'Modo Guantes desactivado'); }
             else if (action === 'toggleReadOnly') { state.readOnlyMode = !state.readOnlyMode; UI.toast(state.readOnlyMode ? 'Modo Solo Lectura activado' : 'Modo Edición habilitado'); }
             else if (action === 'deleteClass') { if(await UI.confirm('Borrar', '¿Eliminar clase?')) { await NurseDB.remove('schedule', id); state.slideOverOpen=false; renderView(); } }
-            else if (action === 'deleteEx') { await NurseDB.remove('exceptions', id); state.slideOverOpen=false; renderView(); }
+            else if (action === 'deleteEx') { 
+                const ex = await NurseDB.get('exceptions', id);
+                if (ex) {
+                    if (ex.type === 'Cancelación') {
+                        // Restaurar una clase suspendida (borramos la cancelación)
+                        await NurseDB.remove('exceptions', id);
+                        UI.toast('Clase restaurada', 'success');
+                    } else if (ex.type === 'Festivo Anulado') {
+                        // Restaurar un festivo que habíamos anulado
+                        ex.type = 'Festivo';
+                        await NurseDB.put('exceptions', ex);
+                        UI.toast('Festivo restaurado', 'success');
+                    } else if (ex.type === 'Festivo') {
+                        // Anular festivo (borrado suave) para que aparezcan las clases ese día
+                        ex.type = 'Festivo Anulado';
+                        await NurseDB.put('exceptions', ex);
+                        UI.toast('Festivo anulado. Tus clases vuelven a ser visibles.', 'info');
+                    } else {
+                        // Si es un Examen u "Otro", borramos normalmente de forma permanente
+                        if (await UI.confirm('Eliminar', '¿Eliminar este evento permanentemente?', 'Eliminar', true)) {
+                            await NurseDB.remove('exceptions', id);
+                            UI.toast('Eliminado', 'info');
+                        } else return;
+                    }
+                    renderView();
+                    // Si tenemos abierto el panel lateral de Excepciones, lo refrescamos
+                    if (state.slideOverOpen && state.slideOverView === 'exceptions') {
+                        renderSlideOverContent('exceptions');
+                    }
+                }
+            }
+            else if (action === 'cancelClassDate') {
+                const classTitle = actionBtn.dataset.title;
+                if(await UI.confirm('Suspender clase', `¿Marcar "${classTitle}" como suspendida/cancelada solo para el día ${dateFmt(state.calendarSelectedDate)}?`, 'Sí, suspender', true)) {
+                    await NurseDB.put('exceptions', {
+                        id: uid(), 
+                        date: state.calendarSelectedDate, 
+                        type: 'Cancelación', 
+                        classId: id,
+                        title: `Clase suspendida: ${classTitle}`
+                    });
+                    renderView();
+                    UI.toast('Clase suspendida para esta fecha');
+                }
+            }
             else if (action === 'deleteTask') { await NurseDB.remove('tasks', id); state.slideOverOpen=false; renderView(); }
             else if (action === 'deleteCase') { if(await UI.confirm('Peligro', '¿Eliminar caso clínico permanentemente?', 'Borrar', true)) { await NurseDB.remove('cases', id); state.slideOverOpen=false; renderView(); } }
             else if (action === 'deleteMed') { await NurseDB.remove('meds', id); state.slideOverOpen=false; renderView(); UI.toast('Eliminado'); }
@@ -1921,7 +2298,6 @@
                     
                     const active = (d.principiosActivos||[]).map(p=>`${p.nombre} ${p.cantidad||''} ${p.unidad||''}`).join(', ') || m.active || 'No especificado';
                     
-                    // Extraemos las secciones usando los códigos numéricos exactos de CIMA
                     const info = { 
                         indicaciones: extractCIMASection(s, '4.1'), 
                         posology: extractCIMASection(s,'4.2'), 
@@ -2048,7 +2424,8 @@
                 } else {
                     initLockScreen();
                 }
-
+                // Arrancar el chequeo de autoguardado en segundo plano
+                AutoBackup.run(false);
                 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
             } catch (e) {
                 $('#app').innerHTML = UIHelpers.notice(`Fallo Crítico: ${e.message}`, false, true);
