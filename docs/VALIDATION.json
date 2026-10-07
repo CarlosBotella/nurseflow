@@ -1,0 +1,172 @@
+{
+  "browser": "Chromium headless",
+  "physical_ios_tested": false,
+  "screen_reader_tested": false,
+  "remote_services": "Mocked for UI checks, not live availability checks",
+  "flows": {
+    "results": [
+      "Onboarding neutral, sin prácticas",
+      "Hoy oculta registro antes de prácticas",
+      "Combobox teclado, selección y autocompletado de contexto (API simulada)",
+      "Autocomplete ignora respuestas obsoletas",
+      "Crear caso y persistir datos",
+      "Editar caso conservando ID",
+      "Cancelar modal destructivo y devolver foco al panel",
+      "Cerrar panel y devolver foco al origen",
+      "Crear tarea",
+      "Registrar día",
+      "Crear flashcard",
+      "Repaso conserva repetición espaciada",
+      "Cálculo de infusión 500/4 = 125",
+      "Solo lectura bloquea campos y submit de formulario abierto",
+      "Solo lectura bloquea importación/borrado y permite exportar",
+      "Consulta/calculadora disponible en solo lectura",
+      "Búsqueda agrupada con foco y sustitución del panel",
+      "Layouts y targets 320x568, normal/guantes",
+      "Layouts y targets 390x844, normal/guantes",
+      "Layouts y targets 768x1024, normal/guantes",
+      "Layouts y targets 1366x768, normal/guantes",
+      "Recarga offline con CSS/JS y conservación de IndexedDB",
+      "Sin errores JavaScript en recorridos"
+    ],
+    "errors": [],
+    "a11y": [
+      {
+        "theme": "light",
+        "route": "today",
+        "violations": []
+      },
+      {
+        "theme": "light",
+        "route": "university",
+        "violations": []
+      },
+      {
+        "theme": "light",
+        "route": "practicum",
+        "violations": []
+      },
+      {
+        "theme": "light",
+        "route": "batea",
+        "violations": []
+      },
+      {
+        "theme": "light",
+        "route": "study",
+        "violations": []
+      },
+      {
+        "theme": "light",
+        "route": "consultation",
+        "violations": []
+      },
+      {
+        "theme": "dark",
+        "route": "today",
+        "violations": []
+      },
+      {
+        "theme": "dark",
+        "route": "university",
+        "violations": []
+      },
+      {
+        "theme": "dark",
+        "route": "practicum",
+        "violations": []
+      },
+      {
+        "theme": "dark",
+        "route": "batea",
+        "violations": []
+      },
+      {
+        "theme": "dark",
+        "route": "study",
+        "violations": []
+      },
+      {
+        "theme": "dark",
+        "route": "consultation",
+        "violations": []
+      }
+    ]
+  },
+  "panels": {
+    "a11y": [
+      {
+        "view": "onboarding",
+        "violations": []
+      },
+      {
+        "view": "caseForm",
+        "violations": []
+      },
+      {
+        "view": "settingsMain",
+        "violations": []
+      },
+      {
+        "view": "settingsProfile",
+        "violations": []
+      },
+      {
+        "view": "settingsPracticum",
+        "violations": []
+      },
+      {
+        "view": "settingsPrivacy",
+        "violations": []
+      },
+      {
+        "view": "settingsTheme",
+        "violations": []
+      },
+      {
+        "view": "tasks",
+        "violations": []
+      },
+      {
+        "view": "classForm",
+        "violations": []
+      },
+      {
+        "view": "flashcards",
+        "violations": []
+      },
+      {
+        "view": "medSearch",
+        "violations": []
+      },
+      {
+        "view": "globalSearch",
+        "violations": []
+      },
+      {
+        "view": "modal",
+        "violations": []
+      },
+      {
+        "view": "ficha CIMA simulada",
+        "violations": []
+      }
+    ],
+    "errors": [],
+    "checks": [
+      "Validación accesible de campos",
+      "Foco circular Tab/Shift+Tab",
+      "Escape cancela promesa de confirmación",
+      "CIMA: búsqueda, ficha y guardado offline con respuestas simuladas"
+    ]
+  },
+  "static": {
+    "indexeddb_unchanged": true,
+    "seed_data_unchanged": true,
+    "calculator_expressions_unchanged": true,
+    "remaining_inline_styles": [
+      "style=\"width:${p}%;\""
+    ],
+    "all_precache_paths_exist": true
+  }
+}

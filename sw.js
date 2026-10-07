@@ -1,8 +1,11 @@
-const CACHE_NAME = 'nurseflow-v4.8';
+const CACHE_NAME = 'nurseflow-ui-v5.0';
 const ASSETS = [
   './',
   './index.html',
-  './manifest.webmanifest'
+  './manifest.webmanifest',
+  './styles/tokens.css', './styles/base.css', './styles/layout.css', './styles/components.css',
+  './scripts/app.js', './scripts/ui.js',
+  './assets/icons/icon-192.png', './assets/icons/icon-512.png', './assets/icons/icon-180.png'
 ];
 
 // Instalar y forzar control inmediato
