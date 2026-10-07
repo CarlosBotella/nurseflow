@@ -1,11 +1,12 @@
-const CACHE_NAME = 'nurseflow-ui-v7.0';
+const CACHE_NAME = 'nurseflow-ui-v7.3';
 const ASSETS = [
   './',
   './index.html',
   './manifest.webmanifest',
   './styles/tokens.css', './styles/base.css', './styles/layout.css', './styles/components.css',
   './scripts/app.js', './scripts/ui.js',
-  './assets/icons/icon-192.png', './assets/icons/icon-512.png', './assets/icons/icon-180.png'
+  './assets/icons/icon-192.png', './assets/icons/icon-512.png', './assets/icons/icon-180.png',
+  './assets/festivos-valencia-2026.json'
 ];
 
 // Instalar y forzar control inmediato
@@ -25,8 +26,7 @@ self.addEventListener('activate', e => {
 
 // Interceptar peticiones
 self.addEventListener('fetch', e => {
-  // Ignorar APIs externas para no cachear respuestas dinámicas
-  if (e.request.url.includes('cima.aemps.es') || e.request.url.includes('workers.dev')) return;
+  if (new URL(e.request.url).origin !== self.location.origin) return;
 
   // Estrategia Network-First para la página principal (HTML)
   if (e.request.mode === 'navigate') {
@@ -49,7 +49,7 @@ self.addEventListener('fetch', e => {
           cache.put(e.request, response.clone());
           return response;
         });
-      }).catch(() => {});
+      }).catch(() => cached || new Response('', { status: 503, statusText: 'Offline' }));
       return cached || fetched;
     })
   );

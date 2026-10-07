@@ -401,6 +401,10 @@ html.gloves-mode .pin-dots { font-size: 2.5rem; letter-spacing: 16px; }
 .btn.ghost { background:transparent; }
 .btn.danger { background:var(--danger-bg); color:var(--danger); }
 .btn.success,.answer-correct { background:var(--success); color:var(--surface-raised); }
+.btn.icon-only.calendar-action-icon { color:#000; }
+.btn.icon-only.calendar-action-icon.bg-primary { background:var(--primary); }
+.btn.icon-only.calendar-action-icon.bg-warning { background:var(--warning); }
+.btn.icon-only.calendar-action-icon.bg-danger { background:var(--danger); }
 .answer-incorrect { background:var(--danger); color:var(--surface-raised); }
 .btn:disabled { cursor:default; opacity:.65; }
 .card--hero { background:var(--accent); color:var(--surface-raised); }

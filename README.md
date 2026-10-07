@@ -40,7 +40,7 @@ Para probar en un ordenador: ejecuta `python3 -m http.server 8000` dentro de est
 
 ## Conexiones y datos
 
-Esta entrega conserva las conexiones del repositorio de origen: CIMA se consulta directamente en AEMPS y CIE-11 usa el Worker referenciado en `scripts/app.js`. El código del Worker no formaba parte del repositorio y no se incluye ni se modifica. Las nuevas búsquedas remotas necesitan internet; las fichas guardadas se consultan localmente.
+Esta entrega conserva las conexiones del repositorio de origen: CIMA se consulta directamente en AEMPS y CIE-11 usa el Worker referenciado en `scripts/app.js`. Los festivos de España se actualizan desde Nager.Date al abrir el panel de excepciones, para el año actual y el siguiente; se vuelven a comprobar cada 30 días, o cada 7 si falta el calendario del año siguiente, y quedan guardados localmente. La API agrupa los festivos nacionales y autonómicos de la Comunitat Valenciana (`ES-VC`); el calendario local de 2026 sirve de respaldo sin conexión. El código del Worker de CIE-11 no formaba parte del repositorio y no se incluye ni se modifica. Las consultas remotas necesitan internet; los datos guardados se consultan localmente.
 
 Se mantienen `NurseFlowDB`, su versión y los almacenes originales. No se incluyen datos personales ni registros de prueba en el ZIP. No se han modificado las fórmulas de las calculadoras ni el contenido clínico de partida. Este trabajo es un refactor de interfaz, no una revisión de la exactitud clínica del contenido.
 

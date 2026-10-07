@@ -1,0 +1,19 @@
+{
+  "year": 2026,
+  "region": "Comunitat Valenciana",
+  "source": "https://calendariosnacionales.com/es/2026/festivos/val/index.ics",
+  "events": [
+    { "date": "2026-01-01", "title": "A\u00f1o Nuevo" },
+    { "date": "2026-01-06", "title": "Epifan\u00eda del Se\u00f1or" },
+    { "date": "2026-03-19", "title": "San Jos\u00e9" },
+    { "date": "2026-04-03", "title": "Viernes Santo" },
+    { "date": "2026-04-06", "title": "Lunes de Pascua" },
+    { "date": "2026-05-01", "title": "Fiesta del Trabajo" },
+    { "date": "2026-06-24", "title": "San Juan" },
+    { "date": "2026-08-15", "title": "Asunci\u00f3n de la Virgen" },
+    { "date": "2026-10-09", "title": "D\u00eda de la Comunitat Valenciana" },
+    { "date": "2026-10-12", "title": "Fiesta Nacional de Espa\u00f1a" },
+    { "date": "2026-12-08", "title": "Inmaculada Concepci\u00f3n" },
+    { "date": "2026-12-25", "title": "Natividad del Se\u00f1or" }
+  ]
+}

@@ -1679,13 +1679,13 @@
                 <div class="display-flex justify-space-between items-center mt-6 mb-4">
                     <h3 class="text-transform-capitalize m-0 text-section">${displayDate}</h3>
                     <div class="display-flex gap-2">
-                        <button class="btn icon-only height-32px width-32px bg-primary text-white" data-action="openSlide" data-view="classForm" title="Añadir Clase">
+                        <button class="btn icon-only height-32px width-32px bg-primary calendar-action-icon" data-action="openSlide" data-view="classForm" title="Añadir Clase">
                             <svg aria-hidden="true" focusable="false" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"></path></svg>
                         </button>
-                        <button class="btn icon-only height-32px width-32px bg-warning text-white" data-action="openSlide" data-view="tasks" title="Añadir Tarea">
+                        <button class="btn icon-only height-32px width-32px bg-warning calendar-action-icon" data-action="openSlide" data-view="tasks" title="Añadir Tarea">
                             <svg aria-hidden="true" focusable="false" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"></path></svg>
                         </button>
-                        <button class="btn icon-only height-32px width-32px bg-danger text-white" data-action="openSlide" data-view="exceptions" title="Añadir Festivo o Excepción">
+                        <button class="btn icon-only height-32px width-32px bg-danger calendar-action-icon" data-action="openSlide" data-view="exceptions" title="Añadir Festivo o Excepción">
                             <svg aria-hidden="true" focusable="false" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                         </button>
                     </div>
@@ -1920,87 +1920,39 @@
                             </div>
                         </form>`;
                 }
-                if(view === 'exceptions') {
-                // Guardado manual
-                $('#exceptionForm').onsubmit = async e => { 
-                    e.preventDefault(); 
-                    const f = new FormData(e.target); 
-                    await NurseDB.put('exceptions', {id: uid(), date: f.get('date'), type: f.get('type'), title: f.get('title').trim()}); 
-                    state.slideOverOpen = false; 
-                    renderView(); 
-                    UI.toast('Excepción guardada'); 
-                };
-
-               // Sincronización Automática
-                $('#syncFestivosBtn').onclick = async () => {
-                    const btn = $('#syncFestivosBtn');
-                    btn.disabled = true;
-                    btn.innerHTML = 'Descargando calendario... ⏳';
-                    
-                    try {
-                        const targetUrl = encodeURIComponent('https://calendariosnacionales.com/es/2026/festivos/val/index.ics');
-                        // Cambiamos a corsproxy.io que no bloquea localhost
-                        const proxyUrl = `https://corsproxy.io/?${targetUrl}`;
-                        
-                        const response = await fetch(proxyUrl);
-                        if (!response.ok) throw new Error('No se pudo acceder al servidor de calendarios');
-                        
-                        const text = await response.text();
-                        const lines = text.split(/\r?\n/);
-                        let inEvent = false, currentEvent = {}, events = [];
-                        
-                        // Procesador del archivo .ics
-                        for (const line of lines) {
-                            if (line.startsWith('BEGIN:VEVENT')) { 
-                                inEvent = true; currentEvent = {}; 
-                            }
-                            else if (line.startsWith('END:VEVENT')) { 
-                                inEvent = false; 
-                                if (currentEvent.date && currentEvent.title) events.push(currentEvent); 
-                            }
-                            else if (inEvent) {
-                                if (line.startsWith('DTSTART')) {
-                                    const parts = line.split(':');
-                                    if (parts.length > 1) {
-                                        const dateStr = parts[1].trim().substring(0, 8);
-                                        if (dateStr.length === 8) {
-                                            currentEvent.date = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
-                                        }
-                                    }
-                                } 
-                                else if (line.startsWith('SUMMARY')) {
-                                    const parts = line.split(':');
-                                    if (parts.length > 1) currentEvent.title = parts.slice(1).join(':').trim();
-                                }
-                            }
-                        }
-                        
-                        if(events.length === 0) throw new Error('El archivo del calendario estaba vacío.');
-
-                        const existing = await NurseDB.all('exceptions');
-                        const existingDates = new Set(existing.map(e => e.date));
-                        let addedCount = 0;
-
-                        for (const ev of events) {
-                            if (!existingDates.has(ev.date)) {
-                                await NurseDB.put('exceptions', { 
-                                    id: uid(), date: ev.date, type: 'Festivo', title: ev.title 
-                                });
-                                addedCount++;
-                            }
-                        }
-                        
-                        UI.toast(`¡Éxito! ${addedCount} festivos nuevos sincronizados.`);
-                        renderView();
-                        renderSlideOverContent('exceptions');
-                        
-                    } catch (error) {
-                        UI.alert('Error de sincronización', 'No se pudieron descargar los festivos. Inténtalo más tarde.');
-                        btn.disabled = false;
-                        btn.innerHTML = '<span class="text-section mr-2">📅</span> Sincronizar Festivos (Com. Valenciana)';
-                    }
-                };
-            }
+                else if (view === 'exceptions') {
+                    const exceptions = (await NurseDB.all('exceptions'))
+                        .sort((a, b) => a.date.localeCompare(b.date));
+                    html = `
+                        <form id="exceptionForm" class="card">
+                            <h3 class="mb-4">Añadir evento</h3>
+                            <label for="exceptionDate">Fecha</label>
+                            <input class="field" id="exceptionDate" type="date" name="date" value="${state.calendarSelectedDate}" required>
+                            <label for="exceptionType">Tipo</label>
+                            <select class="field" id="exceptionType" name="type">
+                                <option>Festivo</option>
+                                <option>Examen</option>
+                                <option>Otro</option>
+                            </select>
+                            <label for="exceptionTitle">Descripción</label>
+                            <input class="field" id="exceptionTitle" name="title" required placeholder="Ej. Festivo local">
+                            <button class="btn primary block">Guardar evento</button>
+                        </form>
+                        <div class="card">
+                            <button type="button" class="btn block" id="syncFestivosBtn">Actualizar festivos (Com. Valenciana)</button>
+                        </div>
+                        <h3 class="text-section mt-6 mb-2">Eventos guardados</h3>
+                        <div class="list">${exceptions.map(x => `
+                            <div class="list-row">
+                                <div class="avatar">${x.type === 'Festivo' ? 'F' : '!'}</div>
+                                <div class="grow">
+                                    <strong>${esc(x.title || x.type)}</strong>
+                                    <div class="sub">${dateFmt(x.date)} · ${esc(x.type)}</div>
+                                </div>
+                                <button type="button" class="btn icon-only" data-action="deleteEx" data-id="${esc(x.id)}" aria-label="Gestionar evento">×</button>
+                            </div>
+                        `).join('') || UIHelpers.noData('No hay eventos guardados', 'Añade una excepción o sincroniza los festivos.')}</div>`;
+                }
                 else if (view === 'tasks') {
                     const rows = (await NurseDB.all('tasks')).sort((a,b)=>(a.done-b.done) || ((a.due||'9999').localeCompare(b.due||'9999')));
                     html = `
@@ -2677,83 +2629,125 @@
                     UI.toast('Excepción guardada'); 
                 };
 
-                // Sincronización Automática
-                $('#syncFestivosBtn').onclick = async () => {
+                const syncFestivos = async (automatic = false) => {
                     const btn = $('#syncFestivosBtn');
-                    btn.disabled = true;
-                    btn.innerHTML = 'Descargando calendario... ⏳';
-                    
+                    if (btn?.disabled) return;
+                    if (btn) {
+                        btn.disabled = true;
+                        btn.textContent = 'Actualizando calendario...';
+                    }
+
                     try {
-                        // Cambiamos webcals:// por https:// y usamos un proxy público para evitar el bloqueo CORS del navegador
-                        const url = 'https://calendariosnacionales.com/es/2026/festivos/val/index.ics';
-                        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-                        
-                        const response = await fetch(proxyUrl);
-                        if (!response.ok) throw new Error('No se pudo acceder al servidor de calendarios');
-                        
-                        const text = await response.text();
-                        const lines = text.split(/\r?\n/);
-                        let inEvent = false, currentEvent = {}, events = [];
-                        
-                        // Procesador del archivo .ics
-                        for (const line of lines) {
-                            if (line.startsWith('BEGIN:VEVENT')) { 
-                                inEvent = true; currentEvent = {}; 
-                            }
-                            else if (line.startsWith('END:VEVENT')) { 
-                                inEvent = false; 
-                                if (currentEvent.date && currentEvent.title) events.push(currentEvent); 
-                            }
-                            else if (inEvent) {
-                                // Extraemos la fecha (Soporta DTSTART;VALUE=DATE:20260101 o DTSTART:20260101T000000Z)
-                                if (line.startsWith('DTSTART')) {
-                                    const parts = line.split(':');
-                                    if (parts.length > 1) {
-                                        const dateStr = parts[1].trim().substring(0, 8); // Cogemos YYYYMMDD
-                                        if (dateStr.length === 8) {
-                                            currentEvent.date = `${dateStr.substring(0,4)}-${dateStr.substring(4,6)}-${dateStr.substring(6,8)}`;
-                                        }
-                                    }
-                                } 
-                                // Extraemos el título del festivo
-                                else if (line.startsWith('SUMMARY')) {
-                                    const parts = line.split(':');
-                                    if (parts.length > 1) currentEvent.title = parts.slice(1).join(':').trim();
+                        const currentYear = new Date().getFullYear();
+                        const years = [currentYear, currentYear + 1];
+                        const eventsByDate = new Map();
+
+                        if (years.includes(2026)) {
+                            try {
+                                const fallbackResponse = await fetch('./assets/festivos-valencia-2026.json');
+                                if (fallbackResponse.ok) {
+                                    const fallback = await fallbackResponse.json();
+                                    fallback.events?.forEach(event => eventsByDate.set(event.date, event));
                                 }
-                            }
+                            } catch {}
                         }
-                        
-                        if(events.length === 0) throw new Error('El archivo del calendario estaba vacío.');
 
-                        // Recuperamos las excepciones actuales para NO duplicarlas
+                        const calendars = await Promise.all(years.map(async year => {
+                            try {
+                                const response = await fetch(
+                                    `https://date.nager.at/api/v3/PublicHolidays/${year}/ES`
+                                );
+                                if (!response.ok) return { available: false, events: [] };
+
+                                const holidays = await response.json();
+                                if (!Array.isArray(holidays)) return { available: false, events: [] };
+
+                                return {
+                                    available: true,
+                                    events: holidays
+                                        .filter(holiday => holiday.global || holiday.counties?.includes('ES-VC'))
+                                        .map(holiday => ({
+                                            date: holiday.date,
+                                            title: holiday.localName || holiday.name
+                                        }))
+                                };
+                            } catch {
+                                return { available: false, events: [] };
+                            }
+                        }));
+
+                        calendars.flatMap(calendar => calendar.events).forEach(event => {
+                            eventsByDate.set(event.date, event);
+                        });
+
+                        const events = [...eventsByDate.values()];
+                        if (!events.length) throw new Error('No hay festivos disponibles para estos años.');
+
                         const existing = await NurseDB.all('exceptions');
-                        const existingDates = new Set(existing.map(e => e.date));
+                        const holidaysByDate = new Map(
+                            existing
+                                .filter(event => event.type === 'Festivo' || event.type === 'Festivo Anulado')
+                                .map(event => [event.date, event])
+                        );
                         let addedCount = 0;
+                        let updatedCount = 0;
 
-                        for (const ev of events) {
-                            if (!existingDates.has(ev.date)) {
-                                await NurseDB.put('exceptions', { 
-                                    id: uid(), 
-                                    date: ev.date, 
-                                    type: 'Festivo', 
-                                    title: ev.title 
-                                });
-                                addedCount++;
+                        for (const event of events) {
+                            const saved = holidaysByDate.get(event.date);
+                            if (saved) {
+                                if (saved.type === 'Festivo' && saved.title !== event.title) {
+                                    saved.title = event.title;
+                                    await NurseDB.put('exceptions', saved);
+                                    updatedCount++;
+                                }
+                                continue;
                             }
+
+                            const holiday = {
+                                id: uid(), date: event.date, type: 'Festivo', title: event.title
+                            };
+                            await NurseDB.put('exceptions', holiday);
+                            holidaysByDate.set(event.date, holiday);
+                            addedCount++;
                         }
-                        
-                        UI.toast(`¡Éxito! ${addedCount} festivos nuevos sincronizados.`);
-                        
-                        // Refrescamos las vistas para que aparezcan al instante en la lista y en el calendario
-                        renderView();
-                        renderSlideOverContent('exceptions');
-                        
+
+                        const retryAfterMs = calendars.every(calendar => calendar.available)
+                            ? 30 * 24 * 60 * 60 * 1000
+                            : 7 * 24 * 60 * 60 * 1000;
+                        localStorage.setItem('nurseflow-holiday-sync', JSON.stringify({
+                            syncedAt: Date.now(), retryAfterMs
+                        }));
+
+                        if (!automatic || addedCount || updatedCount) {
+                            UI.toast(`Festivos: ${addedCount} nuevos${updatedCount ? `, ${updatedCount} actualizados` : ''}.`);
+                        }
+
+                        if (addedCount || updatedCount) {
+                            renderView();
+                            renderSlideOverContent('exceptions');
+                        }
                     } catch (error) {
-                        UI.alert('Error de sincronización', 'No se pudieron descargar los festivos: ' + error.message);
-                        btn.disabled = false;
-                        btn.innerHTML = '<span class="text-section mr-2">📅</span> Sincronizar Festivos (Com. Valenciana)';
+                        if (!automatic) {
+                            UI.alert('Error de sincronización', 'No se pudieron actualizar los festivos: ' + error.message);
+                        }
+                    } finally {
+                        if (btn?.isConnected) {
+                            btn.disabled = false;
+                            btn.textContent = 'Actualizar festivos (Com. Valenciana)';
+                        }
                     }
                 };
+
+                $('#syncFestivosBtn').onclick = () => syncFestivos();
+
+                let lastSync = null;
+                try {
+                    lastSync = JSON.parse(localStorage.getItem('nurseflow-holiday-sync') || 'null');
+                } catch {}
+                const retryAfterMs = lastSync?.retryAfterMs || 0;
+                if (navigator.onLine && (!lastSync?.syncedAt || Date.now() - lastSync.syncedAt >= retryAfterMs)) {
+                    syncFestivos(true);
+                }
             }
             if(view === 'tasks') {
                 $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });
