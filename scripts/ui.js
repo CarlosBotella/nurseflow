@@ -25,15 +25,15 @@ const ClinicalUI=(()=>{
  };
  const emojiIcons={'🏥':'hospital','🩺':'hospital','👤':'person','🎨':'palette','🔒':'lock','💾':'save','📅':'calendar','📋':'book','➕':'plus'};
  const svg=name=>`<svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="${iconPaths[name]||iconPaths.book}"/></svg>`;
- const writeViews=new Set(['caseForm','classForm','dayLog','settingsProfile','settingsPracticum','settingsTheme','settingsPrivacy']);
- const writeActions=new Set(['deleteClass','deleteEx','cancelClassDate','deleteTask','deleteCase','deleteMed','deleteCard','createCardFromTag','toggleFavorite','toggleStar','toggleProcFav']);
- const writeIds=new Set(['saveNursingNotes','saveMedLocal','saveTheme','savePrivacy','savePriv','setupAutoBackupBtn','importBtn','wipeBtn','syncFestivosBtn','autoBackupBtn','setupBackupBtn']);
- const writeForms=new Set(['caseForm','classForm','dayForm','taskForm','flashForm','exceptionForm','profForm','pracForm','privacyForm']);
+ const writeViews=new Set(['caseForm','classForm','dayLog','shiftForm','eirSimulator','settingsProfile','settingsPracticum','settingsTheme','settingsPrivacy']);
+ const writeActions=new Set(['deleteClass','deleteShift','deleteEx','cancelClassDate','deleteTask','deleteCase','deleteMed','deleteCard','createCardFromTag','toggleFavorite','toggleStar','toggleProcFav']);
+ const writeIds=new Set(['saveNursingNotes','saveMedLocal','saveTheme','savePrivacy','savePriv','setupAutoBackupBtn','importBtn','wipeBtn','syncFestivosBtn','addScheduleSlot','startEirAttempt','finishEirAttempt','autoBackupBtn','setupBackupBtn']);
+ const writeForms=new Set(['caseForm','classForm','dayForm','shiftForm','taskForm','flashForm','exceptionForm','profForm','pracForm','privacyForm']);
  let serial=0, focusOrigins=new Map(), oldPanel=null, oldView=null;
  const attr=(el,k,v)=>{if(el.getAttribute(k)!==v)el.setAttribute(k,v);};
  const setInert=(el,v)=>{if(el && el.inert!==v)el.inert=v;};
  function isWrite(el) {
-  return el.matches('[data-task],[data-r],#warnSel,#themeSel') || writeIds.has(el.id) || writeActions.has(el.dataset.action) ||
+  return el.matches('[data-task],[data-r],#warnSel,#themeSel,[data-remove-schedule-slot],[data-eir-answer],[data-eir-flag]') || writeIds.has(el.id) || writeActions.has(el.dataset.action) ||
    (el.dataset.action==='openSlide' && writeViews.has(el.dataset.view)) ||
    (el.matches('button') && el.closest('form') && !el.hasAttribute('type') && el.closest('form').id!=='calcExec') ||
    (el.type==='submit' && el.closest('form') && el.closest('form').id!=='calcExec');

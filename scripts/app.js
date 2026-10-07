@@ -9,6 +9,19 @@
             d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
             return d.toISOString().slice(0, 10);
         };
+        const getAcademicYear = (date = new Date()) => {
+            const startYear = date.getMonth() >= 8
+                ? date.getFullYear()
+                : date.getFullYear() - 1;
+            return `${startYear}-${startYear + 1}`;
+        };
+        const EIR_2025_BOOKLETS = [
+            'https://doihojqqs770p.cloudfront.net/articulos_archivos/articulos-37.pdf',
+            'https://doihojqqs770p.cloudfront.net/articulos_archivos/articulos-38.pdf',
+            'https://doihojqqs770p.cloudfront.net/articulos_archivos/articulos-39.pdf',
+            'https://doihojqqs770p.cloudfront.net/articulos_archivos/articulos-40.pdf',
+            'https://doihojqqs770p.cloudfront.net/articulos_archivos/articulos-41.pdf'
+        ];
         const dateFmt = d => new Intl.DateTimeFormat('es-ES', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(`${d}T12:00:00`));
         const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
         const hashText = async (s) => {
@@ -20,8 +33,8 @@
         // Datos de usuario en IndexedDB: las actualizaciones de esquema deben conservar los almacenes existentes.
         const NurseDB = (() => {
             const DB_NAME = 'NurseFlowDB';
-            const DB_VERSION = 1;
-            const STORES = ['settings', 'cases', 'tasks', 'days', 'schedule', 'exceptions', 'pae', 'meds', 'procedures', 'quiz', 'flashcards'];
+            const DB_VERSION = 2;
+            const STORES = ['settings', 'cases', 'tasks', 'days', 'schedule', 'shifts', 'exceptions', 'pae', 'meds', 'procedures', 'quiz', 'flashcards'];
             let dbInstance = null;
 
             const init = () => new Promise((resolve, reject) => {
@@ -615,6 +628,10 @@
             readOnlyMode: false,
             settings: {
                 onboardingComplete: false, profileName: '', university: '',
+                profileType: 'student',
+                academicYear: getAcademicYear(),
+                pendingSubjects: [],
+                eirEnabled: false,
                 tutorialComplete: false, tutorialStep: 0,
                 courseNumber: '1', course: '1º Enfermería', selectedSubjects: [],
                 hasPracticum: false, practicum: '', hospital: '', service: '',
@@ -1554,9 +1571,23 @@
     return { menu, bindMenu, form, bindForm };
 })();
 
+        const updateBateaSearchOffset = () => {
+            if (!document.body.classList.contains('batea-search-active')) return;
+            const topbar = $('.topbar');
+            if (topbar) {
+                document.documentElement.style.setProperty(
+                    '--batea-search-top',
+                    `${Math.ceil(topbar.getBoundingClientRect().height)}px`
+                );
+            }
+        };
+
+        window.addEventListener('resize', updateBateaSearchOffset, { passive: true });
+
         async function renderView() {
             if (!state.unlocked) return;
             const container = $('#app');
+            document.body.classList.toggle('batea-search-active', state.route === 'batea');
             container.innerHTML = '<div class="empty-state" role="status">Cargando...</div>';
             
             try {
@@ -1573,9 +1604,14 @@
         }
 
         async function renderToday(container) {
-            setTitle('Hoy', state.settings.profileName || 'NurseFlow');
+            const isStudent = state.settings.profileType === 'student';
+            const roleName = state.settings.profileType === 'tcae' ? 'TCAE' : 'Enfermería';
+            setTitle('Hoy', state.settings.profileName || (isStudent ? 'NurseFlow' : roleName));
             // Añadimos 'exceptions' y 'NurseDB.all('exceptions')' al array de descarga
-            const [cases, tasks, days, schedule, exceptions] = await Promise.all([NurseDB.all('cases'), NurseDB.all('tasks'), NurseDB.all('days'), NurseDB.all('schedule'), NurseDB.all('exceptions')]);
+            const [cases, tasks, days, schedule, exceptions, shifts] = await Promise.all([
+                NurseDB.all('cases'), NurseDB.all('tasks'), NurseDB.all('days'),
+                NurseDB.all('schedule'), NurseDB.all('exceptions'), NurseDB.all('shifts')
+            ]);
             const today = getLocalISOToday();
             
             const pending = tasks.filter(x => !x.done && (!x.due || x.due >= today)).sort((a,b) => (a.due||'9999').localeCompare(b.due||'9999'));
@@ -1590,8 +1626,29 @@
             const isPracActive = state.settings.hasPracticum && (!state.settings.periodStart || today >= state.settings.periodStart) && (!state.settings.periodEnd || today <= state.settings.periodEnd);
             const todayCases = cases.filter(x => x.date === today);
             const todayDay = days.find(x => x.date === today);
+            const todayShifts = shifts.filter(x => x.date === today)
+                .sort((a, b) => a.start.localeCompare(b.start));
 
             let html = '';
+            if (!isStudent && todayShifts.length) {
+                html += UIHelpers.section('Turno de hoy');
+                html += `<div class="list">${todayShifts.map(shift => UIHelpers.listRow({
+                    title: `${shift.start}–${shift.end} · ${shift.hospital || 'Hospital'}`,
+                    sub: shift.service || 'Turno profesional',
+                    icon: '🏥'
+                })).join('')}</div>`;
+            }
+            if (
+                state.settings.profileType === 'student' &&
+                state.settings.academicYear !== getAcademicYear()
+            ) {
+                html += UIHelpers.notice(
+                    `Ha comenzado el curso ${getAcademicYear()}. Confirma tu curso y las asignaturas que debes recuperar.`,
+                    true
+                );
+                html += '<button class="btn primary block mb-4" data-action="openSlide" data-view="academicProgression">Revisar curso y recuperaciones</button>';
+            }
+
             if (state.settings.hasPracticum) {
                 if(!isPracActive) html += UIHelpers.notice(today < state.settings.periodStart ? `Prácticas previstas: ${dateFmt(state.settings.periodStart)}` : 'Periodo de prácticas finalizado. Puedes consultar tu portfolio.',true);
                 let progress = '';
@@ -1613,11 +1670,11 @@
                     </div>`;
             }
 
-            html += UIHelpers.section('Universidad hoy');
+            html += UIHelpers.section(isStudent ? 'Universidad hoy' : 'Agenda de hoy');
             html += `<div class="list">${todayClasses.length ? todayClasses.map(x => UIHelpers.listRow({title:x.title, sub:`${x.start} - ${x.end} ${x.room ? '· '+x.room : ''}`,icon:x.start.slice(0,2)})).join('') : UIHelpers.noData('Sin clases hoy', 'Consulta tu calendario para preparar la próxima jornada.')}</div>`;
             let actionsHtml = UIHelpers.section('Siguiente acción');
             actionsHtml += `<div class="grid-2">
-                ${isPracActive && !state.readOnlyMode ? '<button type="button" class="quick-action" data-action="openSlide" data-view="caseForm"><span class="ico">＋</span><strong>Nuevo caso</strong><small>Registro clínico</small></button>' : '<button type="button" class="quick-action" data-action="goRoute" data-val="university"><span class="ico">▤</span><strong>Universidad</strong><small>Calendario y pendientes</small></button>'}
+                ${isPracActive && !state.readOnlyMode ? '<button type="button" class="quick-action" data-action="openSlide" data-view="caseForm"><span class="ico">＋</span><strong>Nuevo caso</strong><small>Registro clínico</small></button>' : `<button type="button" class="quick-action" data-action="goRoute" data-val="university"><span class="ico">▤</span><strong>${isStudent ? 'Universidad' : 'Agenda'}</strong><small>Calendario y pendientes</small></button>`}
                 <button type="button" class="quick-action" data-action="goRoute" data-val="batea"><span class="ico">▤</span><strong>La Batea</strong><small>Técnicas y material</small></button>
                 <button type="button" class="quick-action" data-action="goRoute" data-val="study"><span class="ico">◫</span><strong>Estudio</strong><small>Repaso del día</small></button>
                 <button type="button" class="quick-action" data-action="goRoute" data-val="consultation"><span class="ico">Rx</span><strong>Consulta</strong><small>Medicamentos y herramientas</small></button>
@@ -1634,8 +1691,18 @@
         }
 
         async function renderUniversity(container) {
-            setTitle('Universidad', state.settings.course);
-            const [schedule, tasks, exceptions] = await Promise.all([NurseDB.all('schedule'), NurseDB.all('tasks'), NurseDB.all('exceptions')]);
+            const isStudent = state.settings.profileType === 'student';
+            setTitle(isStudent ? 'Universidad' : 'Agenda', isStudent
+                ? state.settings.course
+                : state.settings.profileType === 'tcae' ? 'Horario TCAE' : 'Horario profesional');
+            const [schedule, tasks, exceptions, shifts, cases, days] = await Promise.all([
+                NurseDB.all('schedule'),
+                NurseDB.all('tasks'),
+                NurseDB.all('exceptions'),
+                NurseDB.all('shifts'),
+                NurseDB.all('cases'),
+                NurseDB.all('days')
+            ]);
 
             const baseDate = new Date(state.calendarViewDate + 'T12:00:00');
             let startDate = new Date(baseDate);
@@ -1687,6 +1754,9 @@
                 const hasClass = !isFestivo && activeClasses.length > 0;
                 
                 const hasTask = tasks.some(x => x.due === isoDate && !x.done);
+                const hasShift = shifts.some(x => x.date === isoDate);
+                const hasCase = cases.some(x => x.date === isoDate);
+                const hasDayLog = days.some(x => x.date === isoDate);
                 // No contamos las cancelaciones ni festivos anulados como puntos rojos
                 const hasEx = dayEx.some(x => x.type !== 'Cancelación' && x.type !== 'Festivo Anulado');
 
@@ -1696,17 +1766,35 @@
                         <div class="dots">
                             ${hasClass ? '<div class="dot class" title="Clases"></div>' : ''}
                             ${hasTask ? '<div class="dot task" title="Tareas"></div>' : ''}
+                            ${hasShift ? '<div class="dot shift" title="Turno de hospital"></div>' : ''}
+                            ${hasCase ? '<div class="dot case" title="Casos clínicos"></div>' : ''}
+                            ${hasDayLog ? '<div class="dot day-log" title="Jornada registrada"></div>' : ''}
                             ${hasEx ? '<div class="dot ex" title="Excepciones"></div>' : ''}
                         </div>
                     </button>`;
             }
-            html += `</div></div></div>`; // Cierre de grid, scroll y card
+            html += `</div></div></div>
+                <div class="calendar-legend" aria-label="Leyenda del calendario">
+                    <span><i class="dot class"></i>Clases</span>
+                    <span><i class="dot task"></i>Tareas</span>
+                    <span><i class="dot shift"></i>Hospital</span>
+                    <span><i class="dot case"></i>Casos</span>
+                    <span><i class="dot day-log"></i>Jornada</span>
+                    <span><i class="dot ex"></i>Excepciones</span>
+                </div>`;
 
             // Renderizar la agenda interactiva del día seleccionado
             const selDateObj = new Date(state.calendarSelectedDate + 'T12:00:00');
             const dayClasses = schedule.filter(x => +x.day === selDateObj.getDay()).sort((a,b) => a.start.localeCompare(b.start));
             const dayTasks = tasks.filter(x => x.due === state.calendarSelectedDate);
             const dayEx = exceptions.filter(x => x.date === state.calendarSelectedDate);
+            const dayShifts = shifts
+                .filter(x => x.date === state.calendarSelectedDate)
+                .sort((a, b) => a.start.localeCompare(b.start));
+            const dayCases = cases
+                .filter(x => x.date === state.calendarSelectedDate)
+                .sort((a, b) => (a.updatedAt || '').localeCompare(b.updatedAt || ''));
+            const dayLog = days.find(x => x.date === state.calendarSelectedDate);
 
             const isFestivo = dayEx.some(x => x.type === 'Festivo');
             const classCancellations = dayEx.filter(x => x.type === 'Cancelación');
@@ -1726,9 +1814,45 @@
                         <button class="btn icon-only height-32px width-32px bg-danger calendar-action-icon" data-action="openSlide" data-view="exceptions" title="Añadir Festivo o Excepción">
                             <svg aria-hidden="true" focusable="false" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
                         </button>
+                        <button class="btn icon-only height-32px width-32px bg-primary calendar-action-icon" data-action="openSlide" data-view="shiftForm" aria-label="Añadir turno de hospital" title="Añadir turno de hospital">
+                            <svg aria-hidden="true" focusable="false" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"></path></svg>
+                        </button>
                     </div>
                 </div>
             `;
+
+            if (dayShifts.length) {
+                html += `<div class="list mb-4">${dayShifts.map(shift => UIHelpers.listRow({
+                    title: `${shift.start}–${shift.end}${shift.end <= shift.start ? ' (+1 día)' : ''} · ${shift.hospital || 'Hospital'}`,
+                    sub: shift.service || 'Turno de prácticas',
+                    icon: '🏥',
+                    action: `data-action="openSlide" data-view="shiftForm" data-id="${esc(shift.id)}"`
+                })).join('')}</div>`;
+            }
+
+            html += `
+                <section class="card">
+                    <div class="display-flex justify-space-between items-center gap-2">
+                        <h3 class="text-section m-0">Mi jornada</h3>
+                        <button class="btn primary" data-action="openSlide" data-view="dayLog" data-id="${state.calendarSelectedDate}">
+                            ${dayLog ? 'Ver / editar' : 'Registrar día'}
+                        </button>
+                    </div>
+                    ${dayLog ? `
+                        <p class="mt-4 mb-2"><strong>${esc(dayLog.mood || 'Jornada registrada')}</strong></p>
+                        <p class="white-space-pre-wrap mb-2">${esc(dayLog.learning || 'Sin reflexión añadida.')}</p>
+                        <p class="sub">${dayLog.attendanceOfficial ? 'Asistencia oficial marcada' : 'Asistencia oficial sin marcar'}</p>
+                    ` : '<p class="muted mt-4 mb-0">Todavía no has registrado este día.</p>'}
+                </section>
+            `;
+
+            html += UIHelpers.section(`Casos del día (${dayCases.length})`);
+            html += `<div class="list">${dayCases.map(item => UIHelpers.listRow({
+                title: item.diagnosis || 'Caso sin diagnóstico',
+                sub: `${item.area || 'Área no indicada'} · ${(item.procedures || []).length} técnicas`,
+                icon: 'C',
+                action: `data-action="openSlide" data-view="caseDetail" data-id="${esc(item.id)}"`
+            })).join('') || UIHelpers.noData('Sin casos registrados', 'Los casos de esta fecha aparecerán aquí.')}</div>`;
 
             // Mostramos los eventos especiales (Festivos, exámenes y cancelaciones manuales)
             if(dayEx.length) {
@@ -1772,7 +1896,7 @@
                     html += `<div class="list-row"><label class="check-row m-0 flex-1"><input type="checkbox" data-task="${x.id}" ${x.done?'checked':''}><span><strong class="${x.done ? 'is-done' : ''}">${esc(x.title)}</strong><div class="sub">${esc(x.category)}</div></span></label></div>`;
                 });
                 html += `</div>`;
-            } else if (!dayEx.length) {
+            } else if (!dayEx.length && !dayShifts.length && !dayCases.length && !dayLog) {
                 html += UIHelpers.noData('Agenda despejada', 'No tienes clases ni entregas para este día.', '<button class="btn primary" data-action="openSlide" data-view="classForm">Añadir clase</button>');
             }
 
@@ -1780,8 +1904,11 @@
         }
 
         async function renderPracticum(container) {
-            setTitle('Prácticas', 'Portfolio Clínico');
-            if(!state.settings.hasPracticum) {
+            const isStudent = state.settings.profileType === 'student';
+            setTitle(isStudent ? 'Prácticas' : 'Portfolio', isStudent
+                ? 'Portfolio Clínico'
+                : state.settings.profileType === 'tcae' ? 'Experiencia TCAE' : 'Experiencia profesional');
+            if (isStudent && !state.settings.hasPracticum) {
                 container.innerHTML = `
                     <div class="empty-state pt-40px">
                         <div class="text-display mb-4">🏥</div>
@@ -1793,7 +1920,7 @@
             }
 
             const [cases, days] = await Promise.all([NurseDB.all('cases'), NurseDB.all('days')]);
-            const isPracActive = practicumActive();
+            const isPracActive = !isStudent || practicumActive();
             const filterArea = state.settings.caseFilterArea || '';
             const filteredCases = filterArea ? cases.filter(c => c.area === filterArea) : cases;
             const orderedCases = [...filteredCases].sort((a,b) => b.date.localeCompare(a.date));
@@ -1801,18 +1928,27 @@
             const areas = [...new Set(cases.map(c => c.area).filter(Boolean))];
 
             container.innerHTML = `
-                <div class="card hero">
-                    <p class="muted small">${esc(state.settings.hospital)} ${state.settings.service ? '· '+esc(state.settings.service) : ''}</p>
-                    <h2 class="text-page m-4px-0-8px">${esc(state.settings.practicum)}</h2>
-                    <p class="text-small">${state.settings.periodStart ? dateFmt(state.settings.periodStart) : ''} — ${state.settings.periodEnd ? dateFmt(state.settings.periodEnd) : ''}</p>
-                    <div class="display-flex gap-2 mt-4">
-                        <button class="btn hero-btn" data-action="openSlide" data-view="settingsPracticum">Editar Info</button>
-                        ${isPracActive && !state.readOnlyMode ? '<button class="btn hero-btn" data-action="openSlide" data-view="caseForm">Nuevo caso</button>' : ''}
+                ${isStudent ? `
+                    <div class="card hero">
+                        <p class="muted small">${esc(state.settings.hospital)} ${state.settings.service ? '· '+esc(state.settings.service) : ''}</p>
+                        <h2 class="text-page m-4px-0-8px">${esc(state.settings.practicum)}</h2>
+                        <p class="text-small">${state.settings.periodStart ? dateFmt(state.settings.periodStart) : ''} — ${state.settings.periodEnd ? dateFmt(state.settings.periodEnd) : ''}</p>
+                        <div class="display-flex gap-2 mt-4">
+                            <button class="btn hero-btn" data-action="openSlide" data-view="settingsPracticum">Editar Info</button>
+                            ${isPracActive && !state.readOnlyMode ? '<button class="btn hero-btn" data-action="openSlide" data-view="caseForm">Nuevo caso</button>' : ''}
+                        </div>
                     </div>
-                </div>
+                ` : `
+                    <div class="card hero">
+                        <p class="muted small">Portfolio profesional · registro educativo anonimizado</p>
+                        <h2 class="text-page m-4px-0-8px">${state.settings.profileType === 'tcae' ? 'TCAE / Auxiliar' : 'Enfermería'}</h2>
+                        <p class="text-small">Registra aprendizajes y técnicas sin datos identificativos de pacientes.</p>
+                        ${!state.readOnlyMode ? '<button class="btn hero-btn mt-4" data-action="openSlide" data-view="caseForm">Nuevo registro</button>' : ''}
+                    </div>
+                `}
 
-                ${UIHelpers.section(isPracActive ? 'Turno actual' : 'Periodo de prácticas')}
-                ${!isPracActive ? UIHelpers.notice(state.settings.periodStart && getLocalISOToday() < state.settings.periodStart ? `Inicio previsto: ${dateFmt(state.settings.periodStart)}` : 'Prácticas finalizadas. Consulta tus registros.',true) : ''}
+                ${UIHelpers.section(isStudent ? (isPracActive ? 'Turno actual' : 'Periodo de prácticas') : 'Actividad profesional')}
+                ${isStudent && !isPracActive ? UIHelpers.notice(state.settings.periodStart && getLocalISOToday() < state.settings.periodStart ? `Inicio previsto: ${dateFmt(state.settings.periodStart)}` : 'Prácticas finalizadas. Consulta tus registros.',true) : ''}
                 <div class="metric-row">
                     <div class="metric"><b>${cases.length}</b><span>casos</span></div>
                     <div class="metric"><b>${procCount}</b><span>técnicas</span></div>
@@ -1860,6 +1996,7 @@
 
         async function renderBateaFull(container) {
             setTitle('La Batea', 'Guía de Técnicas');
+            updateBateaSearchOffset();
             const rows = (await NurseDB.all('procedures')).sort((a,b)=>(b.favorite-a.favorite)||a.name.localeCompare(b.name));
             container.innerHTML = `
                 <div class="search-sticky"><label for="bateaFullQ">Buscar técnica o material</label><input class="field" id="bateaFullQ" placeholder="Filtrar técnica o material..."></div>
@@ -1874,13 +2011,22 @@
         }
 
         async function renderStudy(container) {
-            setTitle('Estudio', 'Repaso Inteligente');
+            const isStudent = state.settings.profileType === 'student';
+            const showEir = state.settings.eirEnabled ||
+                (isStudent && Number(state.settings.courseNumber) >= 4);
+            const pendingSubjects = Array.isArray(state.settings.pendingSubjects)
+                ? state.settings.pendingSubjects
+                : [];
+            setTitle(isStudent ? 'Estudio' : 'Formación', isStudent
+                ? `${state.settings.courseNumber}º Enfermería`
+                : state.settings.profileType === 'tcae'
+                    ? 'Formación TCAE'
+                    : 'Formación enfermera');
             const [cards, quiz] = await Promise.all([NurseDB.all('flashcards'), NurseDB.all('quiz')]);
             const due = cards.filter(c => !c.due || c.due <= getLocalISOToday());
-
             container.innerHTML = `
                 <div class="card hero">
-                    <p class="muted small">Tu repaso diario</p>
+                    <p class="muted small">${isStudent ? 'Tu repaso diario' : 'Repaso y actualización profesional'}</p>
                     <h2 class="text-page m-4px-0-8px">${due.length} Flashcards</h2>
                     <p class="text-small">Sistema de repetición espaciada</p>
                     <div class="display-flex gap-2 mt-4">
@@ -1892,16 +2038,43 @@
                         <div class="ico">◫</div><strong>Gestor</strong><small>${cards.length} tarjetas en total</small>
                     </button>
                     <button type="button" class="quick-action" data-action="openSlide" data-view="quiz">
-                        <div class="ico">?</div><strong>Test Pre-EIR</strong><small>${quiz.length} preguntas</small>
+                        <div class="ico">?</div><strong>Preguntas de repaso</strong><small>${quiz.length} preguntas breves</small>
                     </button>
                     <button type="button" class="quick-action" data-action="openSlide" data-view="practiceReview">
-                        <div class="ico">↺</div><strong>De prácticas</strong><small>Crear tarjetas de casos</small>
+                        <div class="ico">↺</div><strong>${isStudent ? 'De prácticas' : 'De mis casos'}</strong><small>Crear tarjetas de casos</small>
                     </button>
                     <button type="button" class="quick-action" data-action="openSlide" data-view="studyStats">
                         <div class="ico">↗</div><strong>Progreso</strong><small>Estadísticas</small>
                     </button>
                 </div>
+                ${isStudent && pendingSubjects.length ? `
+                    <section class="card">
+                        <h2 class="text-section">Asignaturas pendientes</h2>
+                        <ul>${pendingSubjects.map(subject => `<li>${esc(subject)}</li>`).join('')}</ul>
+                        <button class="btn" data-action="openSlide" data-view="settingsProfile">Actualizar seguimiento</button>
+                    </section>
+                ` : ''}
+                ${showEir ? `<section class="card">
+                    <p class="muted small">Material oficial</p>
+                    <h2 class="text-section mb-2">Examen EIR 2025</h2>
+                    <p class="text-small">Los cinco PDF son versiones del mismo examen, con el orden de preguntas cambiado.</p>
+                    <label for="eirBookletVersion">Versión del cuadernillo</label>
+                    <select class="field" id="eirBookletVersion">
+                        ${EIR_2025_BOOKLETS.map((_, index) => `<option value="${index}">Versión ${index}</option>`).join('')}
+                    </select>
+                    <div class="display-flex gap-2">
+                        <a class="btn primary flex-1" id="eirBookletLink" href="${EIR_2025_BOOKLETS[0]}" target="_blank" rel="noopener noreferrer">Abrir cuadernillo</a>
+                        <a class="btn flex-1" href="https://fse.sanidad.gob.es/fseweb/#/principal/datosAnteriores/cuadernosExamen" target="_blank" rel="noopener noreferrer">Plantillas oficiales</a>
+                    </div>
+                    <button type="button" class="btn block mt-4" id="startEirSimulator" data-action="openSlide" data-view="eirSimulator" data-id="2025-0">Iniciar simulacro completo</button>
+                </section>` : ''}
             `;
+
+            $('#eirBookletVersion')?.addEventListener('change', event => {
+                const version = Number(event.target.value);
+                $('#eirBookletLink').href = EIR_2025_BOOKLETS[version];
+                $('#startEirSimulator').dataset.id = `2025-${version}`;
+            });
         }
 
         async function renderSlideOverContent(view, data) {
@@ -1937,24 +2110,60 @@
                         isCustom = row && !classSubs.some(s => s[1] === row.title);
                     }
 
+                    const weekdays = [
+                        ['Lunes', 1], ['Martes', 2], ['Miércoles', 3],
+                        ['Jueves', 4], ['Viernes', 5], ['Sábado', 6],
+                        ['Domingo', 0]
+                    ];
+                    const slotMarkup = ({ selectedDays = [], start = '09:00', end = '11:00', room = '' } = {}) => `
+                        <fieldset class="form-group schedule-slot" data-schedule-slot>
+                            <legend>Bloque horario</legend>
+                            <div class="schedule-day-picker">
+                                ${weekdays.map(([name, day]) => `
+                                    <label>
+                                        <input type="checkbox" name="days" value="${day}" ${selectedDays.includes(day) ? 'checked' : ''}>
+                                        <span>${name}</span>
+                                    </label>
+                                `).join('')}
+                            </div>
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label>Hora de entrada</label>
+                                    <input class="field" type="time" name="start" step="300" value="${esc(start)}" required>
+                                </div>
+                                <div class="form-field">
+                                    <label>Hora de salida</label>
+                                    <input class="field" type="time" name="end" step="300" value="${esc(end)}" required>
+                                </div>
+                            </div>
+                            <label>Aula (opcional)</label>
+                            <input class="field" name="room" placeholder="Ej. B-04" value="${esc(room)}">
+                            <button type="button" class="btn" data-remove-schedule-slot>Quitar bloque</button>
+                        </fieldset>`;
+
+                    const selectedDay = row
+                        ? Number(row.day)
+                        : new Date(state.calendarSelectedDate + 'T12:00:00').getDay();
+
                     html = `
                         <form id="classForm" class="card">
                             <label>Asignatura / Actividad</label>
                             <select class="field" id="subjectSelect"><option value="">Selecciona...</option>${options}<option value="__custom" ${isCustom?'selected':''}>Otra actividad...</option></select>
                             <input class="field ${isCustom?'':'hidden'} mt-2" id="customSubject" placeholder="Nombre de la actividad" value="${isCustom?esc(row?.title||''):''}">
-                            
-                            <div class="form-row mt-4">
-                                <div class="form-field"><label>Día</label><select class="field" name="day">${['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'].map((x,i)=> { const targetDay = row ? row.day : new Date(state.calendarSelectedDate + 'T12:00:00').getDay(); return `<option value="${i}" ${targetDay==i?'selected':''}>${x}</option>`; }).join('')}</select></div>
-                                <div class="form-field"><label>Aula</label><input class="field" name="room" placeholder="Ej. B-04" value="${esc(row?.room||'')}"></div>
+                            <div class="display-flex justify-space-between items-center gap-2 mt-4 mb-2">
+                                <strong>Horario semanal</strong>
+                                <button type="button" class="btn" id="addScheduleSlot">+ Otro horario</button>
                             </div>
-                            <div class="form-row">
-                                <div class="form-field"><label>Hora Inicio</label><input class="field" type="time" name="start" required value="${esc(row?.start||'09:00')}"></div>
-                                <div class="form-field"><label>Hora Fin</label><input class="field" type="time" name="end" required value="${esc(row?.end||'11:00')}"></div>
-                            </div>
-                            
+                            <p class="form-help">Agrupa los días que tienen la misma hora. Añade otro bloque si cambia el horario.</p>
+                            <div id="scheduleSlots">${slotMarkup({
+                                selectedDays: [selectedDay],
+                                start: row?.start || '09:00',
+                                end: row?.end || '11:00',
+                                room: row?.room || ''
+                            })}</div>
                             <div class="display-flex gap-2 mt-6">
                                 ${row ? `<button type="button" class="btn danger flex-1" data-action="deleteClass" data-id="${row.id}">Borrar</button>` : ''}
-                                <button class="btn primary flex-2">Guardar Clase</button>
+                                <button class="btn primary flex-2">${row ? 'Guardar cambios' : 'Guardar clase'}</button>
                             </div>
                         </form>`;
                 }
@@ -2141,8 +2350,38 @@
                         ${UIHelpers.clinicalWarning()}
                     `;
                 }
+                else if (view === 'shiftForm') {
+                    const row = data ? await NurseDB.get('shifts', data) : null;
+                    const date = row?.date || state.calendarSelectedDate || getLocalISOToday();
+                    html = `
+                        <form id="shiftForm" class="card">
+                            <h3 class="mb-4">Turno de hospital</h3>
+                            <label for="shiftDate">Fecha</label>
+                            <input class="field" id="shiftDate" type="date" name="date" value="${date}" required>
+                            <label for="shiftHospital">Centro hospitalario</label>
+                            <input class="field" id="shiftHospital" name="hospital" value="${esc(row?.hospital || state.settings.hospital || '')}" placeholder="Hospital o centro">
+                            <label for="shiftService">Servicio o unidad</label>
+                            <input class="field" id="shiftService" name="service" value="${esc(row?.service || state.settings.service || '')}" placeholder="Ej. UCI, planta">
+                            <div class="form-row">
+                                <div class="form-field">
+                                    <label for="shiftStart">Hora de entrada</label>
+                                    <input class="field" id="shiftStart" type="time" name="start" value="${row?.start || '08:00'}" required>
+                                </div>
+                                <div class="form-field">
+                                    <label for="shiftEnd">Hora de salida</label>
+                                    <input class="field" id="shiftEnd" type="time" name="end" value="${row?.end || '15:00'}" required>
+                                </div>
+                            </div>
+                            <p class="form-help">Si la salida es después de medianoche, se mostrará como turno nocturno.</p>
+                            <div class="display-flex gap-2">
+                                ${row ? `<button type="button" class="btn danger flex-1" data-action="deleteShift" data-id="${esc(row.id)}">Eliminar turno</button>` : ''}
+                                <button class="btn primary flex-2">${row ? 'Guardar cambios' : 'Guardar turno'}</button>
+                            </div>
+                        </form>`;
+                }
                 else if (view === 'dayLog') {
-                    const date = getLocalISOToday(), row = await NurseDB.get('days', date);
+                    const date = data || getLocalISOToday();
+                    const row = await NurseDB.get('days', date);
                     html = `
                         ${UIHelpers.notice('Registra tu asistencia y estado de ánimo general del turno.')}
                         <form id="dayForm" class="card">
@@ -2151,10 +2390,10 @@
                             
                             <label>Estado del turno</label>
                             <select class="field" name="mood">
-                                <option ${row?.mood==='Tranquilo'?'selected':''}>😊 Tranquilo y formativo</option>
-                                <option ${row?.mood==='Intenso'?'selected':''}>🔥 Intenso / Sobrecarga</option>
-                                <option ${row?.mood==='Muy productivo'?'selected':''}>🚀 Muy productivo (muchas técnicas)</option>
-                                <option ${row?.mood==='Duro emocionalmente'?'selected':''}>❤️ Duro emocionalmente (exitus, etc.)</option>
+                                <option ${row?.mood==='😊 Tranquilo y formativo'?'selected':''}>😊 Tranquilo y formativo</option>
+                                <option ${row?.mood==='🔥 Intenso / Sobrecarga'?'selected':''}>🔥 Intenso / Sobrecarga</option>
+                                <option ${row?.mood==='🚀 Muy productivo (muchas técnicas)'?'selected':''}>🚀 Muy productivo (muchas técnicas)</option>
+                                <option ${row?.mood==='❤️ Duro emocionalmente (exitus, etc.)'?'selected':''}>❤️ Duro emocionalmente (exitus, etc.)</option>
                             </select>
                             
                             <label>Diario Reflexivo (Opcional)</label>
@@ -2394,6 +2633,97 @@
                             <div class="metric"><b>${new Set(cards.map(c=>c.topic)).size}</b><span>Temas</span></div>
                         </div>`;
                 }
+                else if (view === 'eirSimulator') {
+                    const [yearValue, versionValue] = String(data || '2025-0').split('-');
+                    const year = Number(yearValue) || 2025;
+                    const version = Math.min(4, Math.max(0, Number(versionValue) || 0));
+                    const settingsRecords = await NurseDB.all('settings');
+                    let attempt = settingsRecords
+                        .filter(record => record.kind === 'eirAttempt')
+                        .map(record => record.value)
+                        .filter(record => record.year === year && record.status === 'inProgress')
+                        .sort((a, b) => b.startedAt - a.startedAt)[0];
+                    const previousAttempt = settingsRecords
+                        .filter(record => record.kind === 'eirAttempt')
+                        .map(record => record.value)
+                        .filter(record => record.year === year && record.status === 'completed')
+                        .sort((a, b) => b.completedAt - a.completedAt)[0];
+
+                    if (attempt && attempt.deadline <= Date.now()) {
+                        attempt.status = 'completed';
+                        attempt.completedAt = Date.now();
+                        await NurseDB.put('settings', {
+                            id: attempt.id,
+                            kind: 'eirAttempt',
+                            value: attempt
+                        });
+                        attempt = null;
+                    }
+
+                    const bookletUrl = EIR_2025_BOOKLETS[version];
+                    const answerPortal = 'https://fse.sanidad.gob.es/fseweb/#/principal/datosAnteriores/cuadernosExamen';
+                    if (!attempt) {
+                        html = `
+                            <section class="card">
+                                <h2 class="text-section">Simulacro EIR ${year}</h2>
+                                <p>200 preguntas y 10 de reserva · 4 h 30 min.</p>
+                                <p class="form-help">Abre el cuadernillo oficial en otra pestaña y registra aquí tus respuestas. El progreso se guarda en este dispositivo.</p>
+                                <div class="display-flex gap-2">
+                                    <a class="btn" href="${bookletUrl}" target="_blank" rel="noopener noreferrer">Abrir versión ${version}</a>
+                                    <a class="btn" href="${answerPortal}" target="_blank" rel="noopener noreferrer">Plantilla oficial</a>
+                                </div>
+                                ${previousAttempt ? `<p class="form-help mt-4">Último simulacro: ${Object.values(previousAttempt.answers || {}).filter(Boolean).length}/210 respuestas · ${dateFmt(new Date(previousAttempt.completedAt).toISOString().slice(0, 10))}</p>` : ''}
+                                <button type="button" class="btn primary block mt-4" id="startEirAttempt" data-year="${year}" data-version="${version}">Comenzar simulacro</button>
+                            </section>`;
+                    } else {
+                        const answeredCount = Object.values(attempt.answers || {}).filter(Boolean).length;
+                        const flaggedCount = (attempt.flagged || []).length;
+                        const answerRows = Array.from({ length: 210 }, (_, index) => {
+                            const number = index + 1;
+                            const reserve = number > 200;
+                            return `
+                                <div class="eir-answer-row">
+                                    <strong>${reserve ? `R${number - 200}` : number}</strong>
+                                    <select aria-label="Respuesta ${number}" data-eir-answer="${number}">
+                                        <option value="">—</option>
+                                        ${['A', 'B', 'C', 'D'].map(option => `<option value="${option}" ${attempt.answers?.[number] === option ? 'selected' : ''}>${option}</option>`).join('')}
+                                    </select>
+                                    <label><input type="checkbox" data-eir-flag="${number}" ${(attempt.flagged || []).includes(number) ? 'checked' : ''}> Revisar</label>
+                                </div>`;
+                        }).join('');
+                        html = `
+                            <section class="card eir-simulation" data-eir-deadline="${attempt.deadline}" data-eir-session="${esc(attempt.id)}">
+                                <h2 class="text-section">Simulacro EIR ${year} · Versión ${attempt.version}</h2>
+                                <p><strong id="eirTimer" role="timer" aria-live="off"></strong></p>
+                                <p id="eirProgress" role="status">${answeredCount}/210 respuestas · ${flaggedCount} para revisar</p>
+                                <div class="display-flex gap-2 mb-4">
+                                    <a class="btn" href="${EIR_2025_BOOKLETS[Math.min(4, Math.max(0, attempt.version))]}" target="_blank" rel="noopener noreferrer">Abrir cuadernillo</a>
+                                    <a class="btn" href="${answerPortal}" target="_blank" rel="noopener noreferrer">Plantilla oficial</a>
+                                </div>
+                                <div class="eir-answer-grid">${answerRows}</div>
+                                <button type="button" class="btn primary block mt-4" id="finishEirAttempt">Finalizar simulacro</button>
+                            </section>`;
+                    }
+                }
+                else if (view === 'academicProgression') {
+                    const currentCourse = Number(state.settings.courseNumber) || 1;
+                    const pendingSubjects = Array.isArray(state.settings.pendingSubjects)
+                        ? state.settings.pendingSubjects.join('\n')
+                        : '';
+                    html = `
+                        <form id="academicProgressForm" class="card">
+                            <h3 class="text-section">Revisar curso académico</h3>
+                            ${UIHelpers.notice(`Periodo académico: ${esc(getAcademicYear())}. La app no te promociona automáticamente. Elige el curso que vas a comenzar, incluso si repites.`, true)}
+                            <label for="progressCourse">Curso confirmado</label>
+                            <select class="field" id="progressCourse" name="course">
+                                ${[1, 2, 3, 4].map(course => `<option value="${course}" ${course === currentCourse ? 'selected' : ''}>${course}º de Enfermería</option>`).join('')}
+                            </select>
+                            <label for="pendingSubjects">Asignaturas pendientes o de recuperación</label>
+                            <textarea class="field min-height-100px" id="pendingSubjects" name="pendingSubjects" placeholder="Una asignatura por línea">${esc(pendingSubjects)}</textarea>
+                            <p class="form-help">Confirmar el curso no modifica tus clases, registros, casos ni tarjetas.</p>
+                            <button class="btn primary block">Confirmar curso</button>
+                        </form>`;
+                }
                 else if (view === 'settingsMain') {
                     html = `
                         <div class="list">
@@ -2404,7 +2734,7 @@
                                 action: 'data-action="startTutorial"'
                             })}
                             <div class="mode-settings"><button class="btn secondary" data-action="toggleGloves">Modo guantes</button><button class="btn secondary" data-action="toggleReadOnly">Solo lectura</button></div>
-                            ${[['Perfil Académico','settingsProfile','👤'],['Prácticum (Hospital)','settingsPracticum','🏥'],['Apariencia y Avisos','settingsTheme','🎨'],['Privacidad y Bloqueo (PIN)','settingsPrivacy','🔒'],['Base de Datos (Exportar/Borrar)','settingsData','💾']].map(i=>UIHelpers.listRow({title:i[0], icon:i[2], action:`data-action="openSlide" data-view="${i[1]}"`})).join('')}
+                            ${[['Perfil y rol','settingsProfile','👤'],['Prácticum (Hospital)','settingsPracticum','🏥'],['Apariencia y Avisos','settingsTheme','🎨'],['Privacidad y Bloqueo (PIN)','settingsPrivacy','🔒'],['Base de Datos (Exportar/Borrar)','settingsData','💾']].map(i=>UIHelpers.listRow({title:i[0], icon:i[2], action:`data-action="openSlide" data-view="${i[1]}"`})).join('')}
                         </div>
                         <div class="align-center mt-40px pb-20px">
                             <div class="weight-bold text-section text-primary">NurseFlow Pro</div>
@@ -2415,11 +2745,28 @@
                 else if (view === 'settingsProfile') {
                     html = `
                         <form id="profForm" class="card">
-                            <label>Nombre del Estudiante / Profesional</label><input class="field" name="name" value="${esc(state.settings.profileName)}">
-                            <div class="form-row">
-                                <div class="form-field"><label>Universidad</label><input class="field" name="uni" list="universities" value="${esc(state.settings.university)}"><datalist id="universities"><option value="UCV">Universidad Católica de Valencia</option></datalist></div>
-                                <div class="form-field"><label>Curso</label><select class="field" name="course">${[1,2,3,4].map(n=>`<option value="${n}" ${String(n)===String(state.settings.courseNumber)?'selected':''}>${n}º</option>`).join('')}</select></div>
-                            </div>
+                            <label for="profileType">Perfil</label>
+                            <select class="field" id="profileType" name="profileType">
+                                <option value="student" ${state.settings.profileType === 'student' ? 'selected' : ''}>Estudiante de Enfermería</option>
+                                <option value="nurse" ${state.settings.profileType === 'nurse' ? 'selected' : ''}>Enfermero/a</option>
+                                <option value="tcae" ${state.settings.profileType === 'tcae' ? 'selected' : ''}>TCAE / Auxiliar de Enfermería</option>
+                            </select>
+                            <label for="profileName">Nombre (opcional)</label>
+                            <input class="field" id="profileName" name="name" value="${esc(state.settings.profileName)}">
+                            <fieldset id="studentProfileFields" class="form-group ${state.settings.profileType === 'student' ? '' : 'hidden'}">
+                                <legend>Trayectoria académica</legend>
+                                <label for="profileUniversity">Universidad o centro</label>
+                                <input class="field" id="profileUniversity" name="uni" list="universities" value="${esc(state.settings.university)}">
+                                <datalist id="universities"><option value="UCV">Universidad Católica de Valencia</option></datalist>
+                                <p>Curso confirmado: <strong>${esc(state.settings.course || `${state.settings.courseNumber}º Enfermería`)}</strong> · Año ${esc(state.settings.academicYear || getAcademicYear())}</p>
+                                <button type="button" class="btn mb-4" data-action="openSlide" data-view="academicProgression">Revisar curso académico</button>
+                                <label for="profilePendingSubjects">Asignaturas pendientes o de recuperación</label>
+                                <textarea class="field min-height-100px" id="profilePendingSubjects" name="pendingSubjects" placeholder="Una asignatura por línea">${esc((state.settings.pendingSubjects || []).join('\n'))}</textarea>
+                            </fieldset>
+                            <label class="check-row">
+                                <input type="checkbox" name="eirEnabled" ${state.settings.eirEnabled ? 'checked' : ''}>
+                                <span>Mostrar preparación EIR antes de cuarto</span>
+                            </label>
                             <button class="btn primary block mt-4">Guardar Perfil</button>
                         </form>`;
                 }
@@ -2562,12 +2909,86 @@
         function setupSlideOverEvents(view, data) {
             if(view === 'classForm') {
                 $('#subjectSelect')?.addEventListener('change', e => $('#customSubject').classList.toggle('hidden', e.target.value !== '__custom'));
+
+                const slotsContainer = $('#scheduleSlots');
+                const updateRemoveButtons = () => {
+                    const buttons = slotsContainer.querySelectorAll('[data-remove-schedule-slot]');
+                    buttons.forEach(button => {
+                        button.disabled = buttons.length === 1;
+                    });
+                };
+
+                $('#addScheduleSlot').onclick = () => {
+                    const newSlot = slotsContainer.lastElementChild.cloneNode(true);
+                    newSlot.querySelectorAll('[name="days"]').forEach(input => {
+                        input.checked = false;
+                    });
+                    slotsContainer.append(newSlot);
+                    updateRemoveButtons();
+                };
+
+                slotsContainer.addEventListener('click', event => {
+                    const button = event.target.closest('[data-remove-schedule-slot]');
+                    if (!button || button.disabled) return;
+                    button.closest('[data-schedule-slot]').remove();
+                    updateRemoveButtons();
+                });
+                updateRemoveButtons();
+
                 $('#classForm').onsubmit = async e => {
-                    e.preventDefault(); const f = new FormData(e.target);
-                    const sel = $('#subjectSelect')?.value, t = (sel && sel !== '__custom' ? sel : $('#customSubject').value).trim();
-                    if(!t) return UI.toast('Falta título de la asignatura');
-                    await NurseDB.put('schedule', {id: data||uid(), title: t, day: +f.get('day'), room: f.get('room').trim(), start: f.get('start'), end: f.get('end')});
-                    state.slideOverOpen = false; renderView(); UI.toast('Horario actualizado');
+                    e.preventDefault();
+                    const subject = $('#subjectSelect').value;
+                    const title = (subject && subject !== '__custom'
+                        ? subject
+                        : $('#customSubject').value).trim();
+                    if (!title) return UI.toast('Falta título de la asignatura');
+
+                    const blocks = [...slotsContainer.querySelectorAll('[data-schedule-slot]')].map(slot => ({
+                        days: [...slot.querySelectorAll('[name="days"]:checked')]
+                            .map(input => Number(input.value)),
+                        room: slot.querySelector('[name="room"]').value.trim(),
+                        start: slot.querySelector('[name="start"]').value,
+                        end: slot.querySelector('[name="end"]').value
+                    }));
+                    if (blocks.some(block => !block.days.length)) {
+                        return UI.toast('Selecciona al menos un día en cada bloque.');
+                    }
+                    if (blocks.some(block => block.end <= block.start)) {
+                        return UI.toast('La hora de salida debe ser posterior a la entrada.');
+                    }
+
+                    const existing = await NurseDB.all('schedule');
+                    const rows = [];
+                    for (const block of blocks) {
+                        for (const day of block.days) {
+                            const overlaps = item =>
+                                Number(item.day) === day &&
+                                block.start < item.end &&
+                                block.end > item.start;
+                            const conflict = existing.find(item =>
+                                item.id !== data && overlaps(item)
+                            ) || rows.find(overlaps);
+
+                            if (conflict) {
+                                const dayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+                                return UI.toast(`Ese horario se solapa con ${conflict.title} el ${dayNames[day]}.`);
+                            }
+
+                            rows.push({
+                                id: data && rows.length === 0 ? data : uid(),
+                                title,
+                                day,
+                                room: block.room,
+                                start: block.start,
+                                end: block.end
+                            });
+                        }
+                    }
+
+                    await NurseDB.bulkPut('schedule', rows);
+                    state.slideOverOpen = false;
+                    renderView();
+                    UI.toast(`${rows.length === 1 ? 'Clase guardada' : 'Clases guardadas'} ✓`);
                 };
             }
             if(view === 'diseaseSearch') {
@@ -2798,6 +3219,111 @@
                     syncFestivos(true);
                 }
             }
+            if (view === 'eirSimulator') {
+                void (async () => {
+                const content = $('#slideOverContent');
+                const saveAttempt = attempt => NurseDB.put('settings', {
+                    id: attempt.id,
+                    kind: 'eirAttempt',
+                    value: attempt
+                });
+
+                const startButton = $('#startEirAttempt');
+                if (startButton) {
+                    startButton.onclick = async () => {
+                        const attempt = {
+                            id: `eir-attempt-${uid()}`,
+                            kind: 'eirAttempt',
+                            year: Number(startButton.dataset.year),
+                            version: Number(startButton.dataset.version),
+                            status: 'inProgress',
+                            startedAt: Date.now(),
+                            deadline: Date.now() + 270 * 60 * 1000,
+                            answers: {},
+                            flagged: []
+                        };
+                        await saveAttempt(attempt);
+                        renderSlideOverContent('eirSimulator', `${attempt.year}-${attempt.version}`);
+                    };
+                    return;
+                }
+
+                const session = $('.eir-simulation');
+                if (!session) return;
+                const records = await NurseDB.all('settings');
+                const attempt = records
+                    .filter(record => record.kind === 'eirAttempt')
+                    .map(record => record.value)
+                    .find(record => record.id === session.dataset.eirSession);
+                if (!attempt) return;
+
+                const updateProgress = () => {
+                    const answered = Object.values(attempt.answers || {}).filter(Boolean).length;
+                    const flagged = (attempt.flagged || []).length;
+                    $('#eirProgress').textContent = `${answered}/210 respuestas · ${flagged} para revisar`;
+                };
+
+                content.querySelectorAll('[data-eir-answer]').forEach(input => {
+                    input.onchange = async () => {
+                        attempt.answers[input.dataset.eirAnswer] = input.value;
+                        updateProgress();
+                        await saveAttempt(attempt);
+                    };
+                });
+                content.querySelectorAll('[data-eir-flag]').forEach(input => {
+                    input.onchange = async () => {
+                        const question = Number(input.dataset.eirFlag);
+                        const flagged = new Set(attempt.flagged || []);
+                        if (input.checked) flagged.add(question);
+                        else flagged.delete(question);
+                        attempt.flagged = [...flagged].sort((a, b) => a - b);
+                        updateProgress();
+                        await saveAttempt(attempt);
+                    };
+                });
+
+                window.clearInterval(window.nurseflowEirTimer);
+                const updateTimer = async () => {
+                    if (!state.slideOverOpen || state.slideOverView !== 'eirSimulator') {
+                        window.clearInterval(window.nurseflowEirTimer);
+                        return;
+                    }
+                    const remaining = Math.max(0, attempt.deadline - Date.now());
+                    const totalSeconds = Math.ceil(remaining / 1000);
+                    const hours = Math.floor(totalSeconds / 3600);
+                    const minutes = Math.floor((totalSeconds % 3600) / 60);
+                    const seconds = totalSeconds % 60;
+                    const timer = $('#eirTimer');
+                    if (timer) {
+                        timer.textContent = `Tiempo restante: ${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+                    }
+                    if (remaining === 0 && attempt.status === 'inProgress') {
+                        attempt.status = 'completed';
+                        attempt.completedAt = Date.now();
+                        await saveAttempt(attempt);
+                        window.clearInterval(window.nurseflowEirTimer);
+                        renderSlideOverContent('eirSimulator', `${attempt.year}-${attempt.version}`);
+                    }
+                };
+                updateTimer();
+                window.nurseflowEirTimer = window.setInterval(updateTimer, 1000);
+
+                $('#finishEirAttempt').onclick = async () => {
+                    const answered = Object.values(attempt.answers || {}).filter(Boolean).length;
+                    if (!await UI.confirm(
+                        'Finalizar simulacro',
+                        `Has respondido ${answered} de 210 preguntas. La hoja quedará guardada para consultarla junto a la plantilla oficial.`,
+                        'Finalizar'
+                    )) return;
+
+                    attempt.status = 'completed';
+                    attempt.completedAt = Date.now();
+                    await saveAttempt(attempt);
+                    window.clearInterval(window.nurseflowEirTimer);
+                    renderSlideOverContent('eirSimulator', `${attempt.year}-${attempt.version}`);
+                };
+                })();
+            }
             if(view === 'tasks') {
                 $$('[data-task]').forEach(c => c.onchange = async () => { const t = await NurseDB.get('tasks', c.dataset.task); t.done = c.checked; await NurseDB.put('tasks', t); renderView(); });
                 $('#taskForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('tasks', {id: uid(), title: f.get('title').trim(), due: f.get('due'), category: f.get('category'), done: false}); state.slideOverOpen = false; renderView(); UI.toast('Tarea guardada'); };
@@ -2819,8 +3345,47 @@
                     state.slideOverOpen = false; renderView(); UI.toast('Caso Clínico guardado ✓');
                 };
             }
+            if (view === 'shiftForm') {
+                $('#shiftForm').onsubmit = async event => {
+                    event.preventDefault();
+                    const formData = new FormData(event.target);
+                    const start = formData.get('start');
+                    const end = formData.get('end');
+                    if (end === start) {
+                        return UI.toast('La entrada y la salida no pueden tener la misma hora.', 'error');
+                    }
+
+                    await NurseDB.put('shifts', {
+                        id: data || uid(),
+                        date: formData.get('date'),
+                        hospital: formData.get('hospital').trim(),
+                        service: formData.get('service').trim(),
+                        start,
+                        end
+                    });
+                    state.calendarSelectedDate = formData.get('date');
+                    state.slideOverOpen = false;
+                    renderView();
+                    UI.toast('Turno guardado ✓');
+                };
+            }
             if(view === 'dayLog') {
-                $('#dayForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); await NurseDB.put('days', {id: f.get('date'), date: f.get('date'), attendanceOfficial: f.get('attendance')==='on', learning: f.get('learning').trim(), mood: f.get('mood')}); state.slideOverOpen = false; renderView(); UI.toast('Turno registrado ✓'); };
+                $('#dayForm').onsubmit = async event => {
+                    event.preventDefault();
+                    const formData = new FormData(event.target);
+                    const date = formData.get('date');
+                    await NurseDB.put('days', {
+                        id: date,
+                        date,
+                        attendanceOfficial: formData.get('attendance') === 'on',
+                        learning: formData.get('learning').trim(),
+                        mood: formData.get('mood')
+                    });
+                    state.calendarSelectedDate = date;
+                    state.slideOverOpen = false;
+                    renderView();
+                    UI.toast('Jornada guardada ✓');
+                };
             }
             if(view === 'medSearch') {
                 $('#cimaBtn').onclick = () => searchCIMA($('#cimaQ').value);
@@ -2910,8 +3475,73 @@
                     });
                 }; initQuiz();
             }
-            if(view === 'settingsProfile') {
-                $('#profForm').onsubmit = async e => { e.preventDefault(); const f = new FormData(e.target); state.settings.profileName = f.get('name').trim(); state.settings.university = f.get('uni'); state.settings.courseNumber = f.get('course'); state.settings.course = `${f.get('course')}º Enfermería`; await saveSettings(); state.slideOverOpen = false; UI.toast('Perfil guardado ✓'); };
+            if (view === 'academicProgression') {
+                $('#academicProgressForm').onsubmit = async event => {
+                    event.preventDefault();
+                    const formData = new FormData(event.target);
+                    const course = String(formData.get('course'));
+                    const pendingSubjects = String(formData.get('pendingSubjects') || '')
+                        .split(/\r?\n/)
+                        .map(subject => subject.trim())
+                        .filter(Boolean);
+                    const academicYear = getAcademicYear();
+                    const academicHistory = Array.isArray(state.settings.academicHistory)
+                        ? [...state.settings.academicHistory]
+                        : [];
+
+                    academicHistory.push({
+                        academicYear,
+                        fromCourse: state.settings.courseNumber,
+                        course,
+                        pendingSubjects,
+                        confirmedAt: new Date().toISOString()
+                    });
+                    Object.assign(state.settings, {
+                        academicYear,
+                        courseNumber: course,
+                        course: `${course}º Enfermería`,
+                        pendingSubjects,
+                        academicHistory
+                    });
+                    await saveSettings();
+                    state.slideOverOpen = false;
+                    renderView();
+                    UI.toast(`Curso ${course}º confirmado para ${academicYear} ✓`);
+                };
+            }
+            if (view === 'settingsProfile') {
+                $('#profileType').onchange = event => {
+                    $('#studentProfileFields').classList.toggle(
+                        'hidden',
+                        event.target.value !== 'student'
+                    );
+                };
+
+                $('#profForm').onsubmit = async event => {
+                    event.preventDefault();
+                    const formData = new FormData(event.target);
+                    const profileType = formData.get('profileType');
+                    Object.assign(state.settings, {
+                        profileType,
+                        profileName: String(formData.get('name') || '').trim(),
+                        eirEnabled: formData.get('eirEnabled') === 'on'
+                    });
+
+                    if (profileType === 'student') {
+                        Object.assign(state.settings, {
+                            university: String(formData.get('uni') || '').trim(),
+                            pendingSubjects: String(formData.get('pendingSubjects') || '')
+                                .split(/\r?\n/)
+                                .map(subject => subject.trim())
+                                .filter(Boolean)
+                        });
+                    }
+
+                    await saveSettings();
+                    state.slideOverOpen = false;
+                    renderView();
+                    UI.toast('Perfil guardado ✓');
+                };
             }
             if(view === 'settingsPracticum') { 
                 $('#hasPracToggle').onchange = e => $('#pracFields').classList.toggle('hidden', !e.target.checked); 
@@ -2937,7 +3567,7 @@
                 
                 $('#exportModalBtn').onclick = async () => {
                     const ok = await UI.confirm('Exportar Datos', 'Elige qué deseas exportar:\n- Aceptar: Exportar TODO\n- Cancelar: Exportar solo Portfolio clínico', 'Exportar Todo', false);
-                    const storesToExport = ok ? ['settings', 'cases', 'tasks', 'days', 'schedule', 'exceptions', 'pae', 'meds', 'procedures', 'quiz', 'flashcards'] : ['cases', 'days', 'procedures', 'meds'];
+                    const storesToExport = ok ? ['settings', 'cases', 'tasks', 'days', 'schedule', 'shifts', 'exceptions', 'pae', 'meds', 'procedures', 'quiz', 'flashcards'] : ['cases', 'days', 'shifts', 'procedures', 'meds'];
                     const data = await NurseDB.exportAll(storesToExport);
                     const url = URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
                     const a = document.createElement('a'); a.href = url; a.download = `nurseflow-export-${getLocalISOToday()}.json`; a.click();
@@ -3191,6 +3821,14 @@
             else if (action === 'toggleGloves') { state.settings.glovesMode = !state.settings.glovesMode; document.documentElement.classList.toggle('gloves-mode',state.settings.glovesMode); ClinicalUI.enhance(); saveSettings(); UI.toast(state.settings.glovesMode ? 'Modo Guantes activado' : 'Modo Guantes desactivado'); }
             else if (action === 'toggleReadOnly') { state.readOnlyMode = !state.readOnlyMode; UI.toast(state.readOnlyMode ? 'Modo Solo Lectura activado' : 'Modo Edición habilitado'); }
             else if (action === 'deleteClass') { if(await UI.confirm('Borrar', '¿Eliminar clase?')) { await NurseDB.remove('schedule', id); state.slideOverOpen=false; renderView(); } }
+            else if (action === 'deleteShift') {
+                if (await UI.confirm('Eliminar turno', '¿Eliminar este turno del calendario?', 'Eliminar', true)) {
+                    await NurseDB.remove('shifts', id);
+                    state.slideOverOpen = false;
+                    renderView();
+                    UI.toast('Turno eliminado', 'info');
+                }
+            }
             else if (action === 'deleteEx') { 
                 const ex = await NurseDB.get('exceptions', id);
                 if (ex) {
@@ -3462,37 +4100,49 @@
 
         if (step === 1) return `
             <p>
-                Estos datos personalizan la pantalla Hoy
-                y tu perfil académico.
+                Elige el perfil que mejor describe tu etapa actual.
             </p>
 
             ${field('name', 'Tu nombre (opcional)', s.profileName)}
 
-            ${field(
-                'uni',
-                'Universidad o centro de formación',
-                s.university,
-                'text',
-                true
-            )}
-
-            <label for="tour-course">Curso</label>
-            <select class="field" name="course" id="tour-course">
-                ${[1, 2, 3, 4].map(n => `
-                    <option
-                        value="${n}"
-                        ${String(s.courseNumber) === String(n)
-                            ? 'selected' : ''}
-                    >${n}º Enfermería</option>
-                `).join('')}
+            <label for="tour-profileType">Perfil</label>
+            <select class="field" name="profileType" id="tour-profileType">
+                <option value="student" ${s.profileType === 'student' ? 'selected' : ''}>Estudiante de Enfermería</option>
+                <option value="nurse" ${s.profileType === 'nurse' ? 'selected' : ''}>Enfermero/a</option>
+                <option value="tcae" ${s.profileType === 'tcae' ? 'selected' : ''}>TCAE / Auxiliar de Enfermería</option>
             </select>
+
+            <fieldset id="tour-academicFields" class="form-group" ${s.profileType === 'student' ? '' : 'disabled'}>
+                <legend>Trayectoria académica</legend>
+                ${field('uni', 'Universidad o centro de formación', s.university, 'text', true)}
+                <label for="tour-course">Curso confirmado</label>
+                <select class="field" name="course" id="tour-course">
+                    ${[1, 2, 3, 4].map(n => `
+                        <option value="${n}" ${String(s.courseNumber) === String(n) ? 'selected' : ''}>
+                            ${n}º Enfermería
+                        </option>
+                    `).join('')}
+                </select>
+                <label for="tour-pendingSubjects">Asignaturas pendientes (opcional)</label>
+                <textarea class="field" id="tour-pendingSubjects" name="pendingSubjects" placeholder="Una asignatura por línea">${esc((s.pendingSubjects || []).join('\n'))}</textarea>
+            </fieldset>
+
+            <label class="check-row">
+                <input type="checkbox" name="eirEnabled" ${s.eirEnabled ? 'checked' : ''}>
+                <span>Estoy preparando el EIR</span>
+            </label>
         `;
 
         if (step === 2) {
             const c = schedule.find(x => x.id === editing);
 
-            const isUCV = /ucv|cat[óo]lica de valencia/i.test(s.university);
-            let titleFieldHtml = field('title', 'Asignatura o actividad', c?.title || '');
+            const isStudent = s.profileType === 'student';
+            const isUCV = isStudent && /ucv|cat[óo]lica de valencia/i.test(s.university);
+            let titleFieldHtml = field(
+                'title',
+                isStudent ? 'Asignatura o actividad' : 'Actividad habitual',
+                c?.title || ''
+            );
             
             if (isUCV) {
                 let opts = '<option value="">Selecciona asignatura...</option>';
@@ -3522,8 +4172,9 @@
 
             return `
                 <p>
-                    Añade una asignatura o actividad y marca los días
-                    en los que se repite cada semana.
+                    ${isStudent
+                        ? 'Añade una asignatura y marca los días en los que se repite cada semana.'
+                        : 'Añade una actividad o turno habitual y marca los días en los que se repite cada semana.'}
                     El calendario y Hoy utilizarán este horario.
                 </p>
 
@@ -3625,6 +4276,12 @@
                     </div>
                 `).join('') || '<p>No hay tareas pendientes.</p>'}
             </div>
+        `;
+
+        if (step === 4 && s.profileType !== 'student') return `
+            <p>Configura el centro y unidad donde trabajas. Podrás añadir turnos concretos desde Agenda.</p>
+            ${field('hospital', 'Centro hospitalario (opcional)', s.hospital)}
+            ${field('service', 'Servicio o unidad (opcional)', s.service)}
         `;
 
         if (step === 4) {
@@ -3784,11 +4441,15 @@
             </div>
 
             <h3>Tu configuración</h3>
-            <p>${esc(s.university)} · ${esc(s.course)}</p>
+            <p>${s.profileType === 'student'
+                ? `${esc(s.university)} · ${esc(s.course)} · Año ${esc(s.academicYear)}`
+                : s.profileType === 'tcae' ? 'Perfil TCAE / Auxiliar de Enfermería' : 'Perfil Enfermero/a'}</p>
             <p>
                 ${schedule.length} clases ·
                 ${tasks.filter(t => !t.done).length} tareas pendientes ·
-                Prácticas ${s.hasPracticum ? 'activadas' : 'desactivadas'}
+                ${s.profileType === 'student'
+                    ? `Prácticas ${s.hasPracticum ? 'activadas' : 'desactivadas'}`
+                    : esc(s.hospital || 'Centro de trabajo sin configurar')}
             </p>
 
             <p>
@@ -3812,7 +4473,7 @@
                     aria-label="Progreso del asistente"
                 ></progress>
 
-                <h1 id="tourHeading" tabindex="-1">${steps[step]}</h1>
+                <h1 id="tourHeading" tabindex="-1">${step === 4 && state.settings.profileType !== 'student' ? 'Centro de trabajo' : steps[step]}</h1>
 
                 <form id="obForm" class="card">
                     ${body()}
@@ -3864,6 +4525,10 @@
 
         $('#tour-has')?.addEventListener('change', e => {
             $('#tour-prac').disabled = !e.target.checked;
+        });
+
+        $('#tour-profileType')?.addEventListener('change', event => {
+            $('#tour-academicFields').disabled = event.target.value !== 'student';
         });
 
         $('#obForm').onsubmit = e => {
@@ -4056,18 +4721,40 @@
         }
 
         if (step === 1) {
-            await settings({
+            const profileType = String(f.get('profileType') || 'student');
+            const changes = {
+                profileType,
                 profileName: String(f.get('name') || '').trim(),
-                university: String(f.get('uni') || '').trim(),
-                courseNumber: f.get('course'),
-                course: `${f.get('course')}º Enfermería`
-            });
+                eirEnabled: f.get('eirEnabled') === 'on'
+            };
+
+            if (profileType === 'student') {
+                const course = String(f.get('course') || state.settings.courseNumber);
+                Object.assign(changes, {
+                    university: String(f.get('uni') || '').trim(),
+                    courseNumber: course,
+                    course: `${course}º Enfermería`,
+                    pendingSubjects: String(f.get('pendingSubjects') || '')
+                        .split(/\r?\n/)
+                        .map(subject => subject.trim())
+                        .filter(Boolean)
+                });
+            }
+
+            await settings(changes);
         }
 
         if (step === 2) await saveClass(false);
         if (step === 3) await saveTask(false);
 
-        if (step === 4) {
+        if (step === 4 && state.settings.profileType !== 'student') {
+            await settings({
+                hospital: String(f.get('hospital') || '').trim(),
+                service: String(f.get('service') || '').trim()
+            });
+        }
+
+        if (step === 4 && state.settings.profileType === 'student') {
             const has = f.get('has') === 'on';
             const from = String(f.get('from') || '');
             const to = String(f.get('to') || '');
@@ -4118,6 +4805,7 @@
         if (
             delta > 0 &&
             step === 1 &&
+            $('#tour-profileType').value === 'student' &&
             !$('#tour-uni').value.trim()
         ) {
             throw new Error(

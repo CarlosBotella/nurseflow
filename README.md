@@ -23,6 +23,9 @@ Para probar en un ordenador: ejecuta `python3 -m http.server 8000` dentro de est
 - Modales con gestión de foco, cancelación con Escape y fondo inerte.
 - Tema claro/oscuro, modo guantes y controles de solo lectura.
 - Recursos locales precacheados para funcionar sin conexión después de la primera carga.
+- Perfiles de Estudiante, Enfermería y TCAE, con Agenda, Portfolio y Formación adaptados.
+- Confirmación manual del nuevo curso y registro de asignaturas pendientes; la app nunca promociona automáticamente.
+- Simulacro EIR 2025 con temporizador, hoja de respuestas y marcas de revisión guardadas en IndexedDB. Los cuadernillos originales se abren desde sus enlaces oficiales; la corrección se consulta en el portal FSE, no se copian los enunciados ni la plantilla en la app.
 
 ## Archivos reales
 

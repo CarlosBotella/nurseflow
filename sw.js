@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nurseflow-ui-v7.4';
+const CACHE_NAME = 'nurseflow-ui-v8.1';
 const ASSETS = [
   './',
   './index.html',
